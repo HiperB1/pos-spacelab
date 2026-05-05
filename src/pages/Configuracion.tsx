@@ -5,6 +5,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
@@ -19,8 +21,6 @@ export function ConfiguracionPage() {
 async function handleCheckUpdate() {
     setCheckingUpdate(true);
     try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const { relaunch } = await import('@tauri-apps/plugin-process');
       const update = await check();
       if (update?.available) {
         toast.success(`Nueva versión ${update.version} disponible`);
