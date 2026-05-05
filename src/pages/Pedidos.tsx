@@ -136,7 +136,7 @@ export function Pedidos() {
             className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'pendientes' ? 'bg-indigo-500 text-white' : 'text-white/40 hover:text-white'}`}
           >
             <Clock className="w-4 h-4" /> Pendientes
-            <Badge variant={tab === 'pendientes' ? 'secondary' : 'outline'}>{facturas.filter(f => f.estado === 'activa' && (!f.estado_entrega || f.estado_entrega === 'pendiente')).length}</Badge>
+            <Badge variant={tab === 'pendientes' ? 'info' : 'warning'}>{facturas.filter(f => f.estado === 'activa' && (!f.estado_entrega || f.estado_entrega === 'pendiente')).length}</Badge>
           </button>
           <button 
             onClick={() => setTab('despachados')}

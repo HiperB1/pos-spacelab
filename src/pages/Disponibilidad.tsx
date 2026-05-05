@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getDisponibilidadeParaEnsamblar, assembleProducto } from '../lib/productos';
-import { disassembleProducto } from '../lib/database';
+import { disassembleProduto } from '../lib/database';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';

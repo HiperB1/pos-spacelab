@@ -1,11 +1,21 @@
 import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
 import type { Factura, FacturaItem } from './types';
 import * as db from './database';
 import { toast } from 'sonner';
 import { saveAs } from 'file-saver';
 
-(pdfMake as any).vfs = pdfFonts.pdfMake.vfs;
+// Initialize pdfmake fonts at runtime to avoid build issues
+if (typeof window !== 'undefined') {
+  import('pdfmake/build/vfs_fonts').then((pdfFonts: any) => {
+    try {
+      if (pdfFonts?.pdfMake?.vfs) {
+        (pdfMake as any).vfs = pdfFonts.pdfMake.vfs;
+      }
+    } catch (e) {
+      console.warn('[PDF] Failed to load fonts:', e);
+    }
+  }).catch(e => console.warn('[PDF] Font import failed:', e));
+}
 
 async function getBase64ImageFromURL(url: string): Promise<string> {
   const res = await fetch(url);
@@ -202,8 +212,10 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
   };
   
   try {
+    // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    pdfDocGenerator.getBlob((blob) => {
+    // @ts-ignore
+    pdfDocGenerator.getBlob((blob: any) => {
       saveAs(blob, `factura_${factura.numero}.pdf`);
       toast.success('PDF generado correctamente', { id: toastId });
     });
@@ -321,8 +333,10 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
   };
   
   try {
+    // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    pdfDocGenerator.getBlob((blob) => {
+    // @ts-ignore
+    pdfDocGenerator.getBlob((blob: any) => {
       saveAs(blob, `guia_${factura.numero}.pdf`);
       toast.success('Guía de envío generada', { id: toastId });
     });

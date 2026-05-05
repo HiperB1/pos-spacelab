@@ -1,4 +1,4 @@
-import type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario } from './types';
+import type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem } from './types';
 
 type DataStore = {
   configuracion: Configuracion;
@@ -10,6 +10,10 @@ type DataStore = {
   facturas: Factura[];
   factura_items: FacturaItem[];
   domiciliarios: Domiciliario[];
+  cotizaciones: Cotizacion[];
+  cotizacion_items: CotizacionItem[];
+  notas_credito: NotaCredito[];
+  nota_credito_items: NotaCreditoItem[];
 };
 
 const defaultData: DataStore = {
@@ -22,6 +26,7 @@ const defaultData: DataStore = {
     empresa_telefono: '',
     empresa_email: '',
     siguiente_numero: 1,
+    siguiente_numero_cotizacion: 1,
     meta_mensual: 10000000,
     dias_laborables: 25
   },
@@ -32,7 +37,11 @@ const defaultData: DataStore = {
   producto_componentes: [],
   facturas: [],
   factura_items: [],
-  domiciliarios: []
+  domiciliarios: [],
+  cotizaciones: [],
+  cotizacion_items: [],
+  notas_credito: [],
+  nota_credito_items: []
 };
 
 let store: DataStore = JSON.parse(JSON.stringify(defaultData));
@@ -43,7 +52,8 @@ export async function initDatabase(): Promise<void> {
   const saved = localStorage.getItem('dg_facturacion_db');
   if (saved) {
     try {
-      store = JSON.parse(saved);
+      const loaded = JSON.parse(saved);
+      store = { ...JSON.parse(JSON.stringify(defaultData)), ...loaded };
     } catch {
       store = JSON.parse(JSON.stringify(defaultData));
     }
@@ -429,7 +439,7 @@ export function despacharFactura(id: string, domiciliarioId: string): void {
   if (fIdx >= 0 && dObj) {
     store.facturas[fIdx] = {
       ...store.facturas[fIdx],
-      estado_entrega: 'despachado',
+      estado_entrega: 'en_despacho',
       domiciliario_id: domiciliarioId,
       domiciliario_nome: dObj.nome,
       fecha_despacho: new Date().toISOString()
@@ -438,5 +448,181 @@ export function despacharFactura(id: string, domiciliarioId: string): void {
   }
 }
 
+export function actualizarEstadoEntrega(id: string, nuevoEstado: string): void {
+  const fIdx = store.facturas.findIndex(f => f.id === id);
+  
+  if (fIdx >= 0) {
+    const update: any = { estado_entrega: nuevoEstado };
+    
+    if (nuevoEstado === 'entregado') {
+      update.fecha_entrega = new Date().toISOString();
+    }
+    
+    store.facturas[fIdx] = {
+      ...store.facturas[fIdx],
+      ...update
+    };
+    save();
+  }
+}
+
+export function getCotizaciones(): any[] {
+  return (store.cotizaciones || []).map(c => ({
+    ...c,
+    items: (store.cotizacion_items || []).filter(i => i.cotizacion_id === c.id)
+  }));
+}
+
+export function getCotizacion(id: string): any {
+  const c = store.cotizaciones.find(co => co.id === id);
+  if (!c) return undefined;
+  return { ...c, items: store.cotizacion_items.filter(i => i.cotizacion_id === id) };
+}
+
+export function getSiguienteNumeroCotizacion(): string {
+  const prefijo = store.configuracion.prefijo;
+  const numero = (store.configuracion.siguiente_numero_cotizacion || 1).toString().padStart(5, '0');
+  return `${prefijo}COT-${numero}`;
+}
+
+export function createCotizacion(data: any): any {
+  const id = crypto.randomUUID();
+  const prefijo = store.configuracion.prefijo;
+  const numeroCot = (store.configuracion.siguiente_numero_cotizacion || 1).toString().padStart(5, '0');
+  const numero = `${prefijo}COT-${numeroCot}`;
+  
+  const validezDias = data.validez_dias || 15;
+  const fechaVencimiento = new Date();
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + validezDias);
+  
+  const subtotal = data.items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
+  const descuento = data.descuento || 0;
+  const iva = 0;
+  const total = subtotal - descuento;
+  
+  const cotizacion: Cotizacion = {
+    id,
+    numero,
+    cliente_id: data.cliente_id,
+    cliente_nome: data.cliente_nome,
+    cliente_celular: data.cliente_celular || '',
+    cliente_nit: data.cliente_nit,
+    cliente_direccion: data.cliente_direccion,
+    fecha: new Date().toISOString().split('T')[0],
+    fecha_vencimiento: fechaVencimiento.toISOString().split('T')[0],
+    validez_dias: validezDias,
+    subtotal,
+    iva,
+    descuento,
+    total,
+    estado: 'abierta',
+    notas: data.notas || ''
+  };
+  
+  store.cotizaciones.push(cotizacion);
+  
+  const items: CotizacionItem[] = data.items.map((i: any) => ({
+    id: crypto.randomUUID(),
+    cotizacion_id: id,
+    descripcion: i.descripcion,
+    quantidade: i.quantidade,
+    precio: i.precio,
+    total: i.quantidade * i.precio
+  }));
+  
+  store.cotizacion_items.push(...items);
+  
+  store.configuracion.siguiente_numero_cotizacion = (store.configuracion.siguiente_numero_cotizacion || 1) + 1;
+  save();
+  
+  return { ...cotizacion, items };
+}
+
+export function updateCotizacionEstado(id: string, estado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida'): void {
+  const idx = store.cotizaciones.findIndex(c => c.id === id);
+  if (idx >= 0) {
+    store.cotizaciones[idx] = { ...store.cotizaciones[idx], estado };
+    save();
+  }
+}
+
+export function deleteCotizacion(id: string): void {
+  store.cotizaciones = store.cotizaciones.filter(c => c.id !== id);
+  store.cotizacion_items = store.cotizacion_items.filter(i => i.cotizacion_id !== id);
+  save();
+}
+
+export function getNotasCredito(): any[] {
+  return (store.notas_credito || []).map(nc => ({
+    ...nc,
+    items: (store.nota_credito_items || []).filter(i => i.nota_credito_id === nc.id)
+  }));
+}
+
+export function getNotaCredito(id: string): any {
+  const nc = store.notas_credito.find(n => n.id === id);
+  if (!nc) return undefined;
+  return { ...nc, items: store.nota_credito_items.filter(i => i.nota_credito_id === id) };
+}
+
+export function getSiguienteNumeroNotaCredito(): string {
+  const prefijo = store.configuracion.prefijo;
+  const numero = (store.configuracion.siguiente_numero_nota_credito || 1).toString().padStart(5, '0');
+  return `${prefijo}NC-${numero}`;
+}
+
+export function createNotaCredito(data: any): any {
+  const id = crypto.randomUUID();
+  const prefijo = store.configuracion.prefijo;
+  const numeroNC = (store.configuracion.siguiente_numero_nota_credito || 1).toString().padStart(5, '0');
+  const numero = `${prefijo}NC-${numeroNC}`;
+  
+  const subtotal = data.items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
+  const descuento = data.descuento || 0;
+  const iva = 0;
+  const total = subtotal - descuento;
+  
+  const notaCredito: NotaCredito = {
+    id,
+    numero,
+    factura_afectada_id: data.factura_afectada_id,
+    factura_numero: data.factura_numero,
+    cliente_nome: data.cliente_nome,
+    cliente_nit: data.cliente_nit,
+    cliente_direccion: data.cliente_direccion,
+    fecha: new Date().toISOString().split('T')[0],
+    subtotal,
+    iva,
+    descuento,
+    total,
+    motivo: data.motivo,
+    observaciones: data.observaciones || ''
+  };
+  
+  store.notas_credito.push(notaCredito);
+  
+  const items: NotaCreditoItem[] = data.items.map((i: any) => ({
+    id: crypto.randomUUID(),
+    nota_credito_id: id,
+    descripcion: i.descripcion,
+    quantidade: i.quantidade,
+    precio: i.precio,
+    total: i.quantidade * i.precio
+  }));
+  
+  store.nota_credito_items.push(...items);
+  
+  store.configuracion.siguiente_numero_nota_credito = (store.configuracion.siguiente_numero_nota_credito || 1) + 1;
+  save();
+  
+  return { ...notaCredito, items };
+}
+
+export function deleteNotaCredito(id: string): void {
+  store.notas_credito = store.notas_credito.filter(nc => nc.id !== id);
+  store.nota_credito_items = store.nota_credito_items.filter(i => i.nota_credito_id !== id);
+  save();
+}
+
 // Force re-export
-export type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario };
+export type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem };

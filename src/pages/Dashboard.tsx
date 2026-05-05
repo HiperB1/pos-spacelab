@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  AreaChart, Area, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer 
+import {
+  AreaChart, Area, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { 
-  Package, Users, DollarSign, TrendingUp, 
+import {
+  Package, Users, DollarSign, TrendingUp,
   AlertTriangle, FilePlus, UserPlus, Box, ReceiptText, Calendar, Truck
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getFacturas, getClientes, getSubproductos, getProdutos, getMateriasPrimas, getConfiguracion } from '../lib/database';
 import { useNavigation } from '../context/NavigationContext';
+import { toast } from 'sonner';
 
 interface MonthlyData {
   name: string;
@@ -59,7 +60,7 @@ export function Dashboard() {
     const clientes = data.clientes.length;
     const productos = data.productos.length;
     const totalInventario = data.materiasPrimas.length + data.subproductos.length + data.productos.length;
-    
+
     const hoy = new Date().toISOString().split('T')[0];
     const ventaHoy = data.facturas
       .filter(f => f.estado === 'activa' && f.fecha === hoy)
@@ -86,11 +87,61 @@ export function Dashboard() {
 
   const topProducts: TopProduct[] = useMemo(() => {
     const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#f97316'];
-    return data.productos.slice(0, 5).map((p, idx) => ({
-      name: p.nome,
-      value: Math.floor(Math.random() * 100) + 50, // Mock sales data
+    
+    // Calcular ventas reales por producto desde facturas
+    const ventasPorProducto: Record<string, number> = {};
+    data.facturas.forEach(f => {
+      if (f.estado === 'activa' && f.items) {
+        f.items.forEach((item: any) => {
+          const key = item.descripcion;
+          ventasPorProducto[key] = (ventasPorProducto[key] || 0) + item.quantidade;
+        });
+      }
+    });
+    
+    // Ordenar y tomar top 5
+    const ordenado = Object.entries(ventasPorProducto)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    return ordenado.map(([nome, value], idx) => ({
+      name: nome,
+      value,
       color: COLORS[idx % COLORS.length]
     }));
+  }, [data]);
+
+  const analisisABC = useMemo(() => {
+    const ventasPorProducto: Record<string, number> = {};
+    let totalVentas = 0;
+    
+    data.facturas.forEach(f => {
+      if (f.estado === 'activa' && f.items) {
+        f.items.forEach((item: any) => {
+          const key = item.descripcion;
+          const venta = item.quantidade * item.precio;
+          ventasPorProducto[key] = (ventasPorProducto[key] || 0) + venta;
+          totalVentas += venta;
+        });
+      }
+    });
+    
+    // Ordenar por valor
+    const productos = Object.entries(ventasPorProducto)
+      .sort((a, b) => b[1] - a[1]);
+    
+    let acumulativo = 0;
+    return productos.map(([nome, valor], idx) => {
+      acumulativo += valor;
+      const pct = totalVentas > 0 ? (valor / totalVentas) * 100 : 0;
+      const acumuladoPct = totalVentas > 0 ? (acumulativo / totalVentas) * 100 : 0;
+      
+      let clasificacion = 'C';
+      if (acumuladoPct <= 80) clasificacion = 'A';
+      else if (acumuladoPct <= 95) clasificacion = 'B';
+      
+      return { nome, valor, pct, clasificacion };
+    });
   }, [data]);
 
   const stockAlerts: StockAlert[] = useMemo(() => {
@@ -107,6 +158,22 @@ export function Dashboard() {
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val);
   };
+
+  // Notificación de Meta Cumplida (Ubicada después de formatCurrency para evitar errores de referencia)
+  useEffect(() => {
+    if (!loading && stats.metaDiaria > 0 && stats.ventaHoy >= stats.metaDiaria) {
+      const hoy = new Date().toISOString().split('T')[0];
+      const notifiedDate = localStorage.getItem('last_goal_notification');
+      
+      if (notifiedDate !== hoy) {
+        toast.success('¡Meta Diaria Alcanzada!', {
+          description: `Se han superado los ${formatCurrency(stats.metaDiaria)} en ventas hoy. ¡Excelente trabajo!`,
+          duration: 6000,
+        });
+        localStorage.setItem('last_goal_notification', hoy);
+      }
+    }
+  }, [stats.ventaHoy, stats.metaDiaria, loading]);
 
   if (loading) return <div className="flex items-center justify-center h-full text-white/20">Cargando datos...</div>;
 
@@ -133,7 +200,7 @@ export function Dashboard() {
           { label: 'Despachar', icon: Truck, desc: 'Gestionar pedidos', action: () => navigate('pedidos'), color: 'bg-emerald-500/10 text-emerald-400', border: 'border-emerald-500/20' },
           { label: 'Ver Stock', icon: TrendingUp, desc: 'Estado de inventario', action: () => navigate('inventario'), color: 'bg-orange-500/10 text-orange-400', border: 'border-orange-500/20' }
         ].map((btn, idx) => (
-          <button 
+          <button
             key={idx}
             onClick={btn.action}
             className={`group p-4 ${btn.color} border ${btn.border} rounded-3xl text-left hover:brightness-125 transition-all flex items-center gap-4`}
@@ -183,29 +250,50 @@ export function Dashboard() {
               <TrendingUp className="w-5 h-5" />
             </div>
             {stats.ventaHoy >= stats.metaDiaria && stats.metaDiaria > 0 && (
-              <div className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold bg-emerald-400/10 px-2 py-1 rounded-full">
+              <div className="flex items-center gap-1 text-emerald-400 text-[10px] font-bold bg-emerald-400/10 px-2 py-1 rounded-full animate-pulse">
                 META CUMPLIDA
               </div>
             )}
           </div>
           <div>
             <p className="text-sm font-medium text-white/40 uppercase tracking-widest mb-1">Venta Diaria</p>
-            <p className="text-2xl font-bold text-white">{formatCurrency(stats.ventaHoy)}</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-white">{formatCurrency(stats.ventaHoy)}</p>
+              {stats.metaDiaria > 0 && (
+                <span className="text-xs text-white/20 font-medium">
+                  {Math.round((stats.ventaHoy / stats.metaDiaria) * 100)}%
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="stat-card p-6 flex flex-col justify-between border-primary/20 bg-primary/5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="stat-card p-6 flex flex-col justify-between border-primary/20 bg-primary/5 relative overflow-hidden group">
+          <div className="flex items-center justify-between mb-4 relative z-10">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <DollarSign className="w-5 h-5" />
+              <TrendingUp className="w-5 h-5" />
             </div>
             <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
               Objetivo Diario
             </div>
           </div>
-          <div>
-            <p className="text-sm font-medium text-white/40 uppercase tracking-widest mb-1">Meta Diaria</p>
-            <p className="text-2xl font-bold text-primary">{formatCurrency(stats.metaDiaria)}</p>
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-white/40 uppercase tracking-widest">Meta Diaria</p>
+              <p className="text-xs font-bold text-primary">{formatCurrency(stats.metaDiaria)}</p>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden mb-1">
+              <div 
+                className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_10px_#e0f355]"
+                style={{ width: `${Math.min((stats.ventaHoy / (stats.metaDiaria || 1)) * 100, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span className="text-white/20">0%</span>
+              <span className="text-primary/60">{Math.round((stats.ventaHoy / (stats.metaDiaria || 1)) * 100)}% COMPLETADO</span>
+            </div>
           </div>
         </div>
       </div>
@@ -217,27 +305,27 @@ export function Dashboard() {
               <AreaChart data={monthlyData}>
                 <defs>
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="#ffffff20" 
-                  fontSize={12} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="name"
+                  stroke="#ffffff20"
+                  fontSize={12}
+                  tickLine={false}
                   axisLine={false}
                   dy={10}
                 />
-                <YAxis 
-                  stroke="#ffffff20" 
-                  fontSize={10} 
-                  tickLine={false} 
+                <YAxis
+                  stroke="#ffffff20"
+                  fontSize={10}
+                  tickLine={false}
                   axisLine={false}
-                  tickFormatter={(val) => `$${val/1000}k`}
+                  tickFormatter={(val) => `$${val / 1000}k`}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px' }}
                   itemStyle={{ color: '#fff', fontSize: '14px' }}
                 />
@@ -264,7 +352,7 @@ export function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px' }}
                 />
               </PieChart>

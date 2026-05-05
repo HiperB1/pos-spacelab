@@ -26,6 +26,7 @@ export function createFactura(data: {
   cliente_direccion: string;
   items: { descripcion: string; quantidade: number; precio: number }[];
   notas?: string;
+  descuento?: number;
 }): Factura & { items: FacturaItem[] } {
   const factura = db.createFactura(data);
   showToast.success('Factura creada exitosamente');

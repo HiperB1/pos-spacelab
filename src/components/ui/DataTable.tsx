@@ -20,6 +20,7 @@ export interface DataTableProps<T> {
   sortable?: boolean;
   paginated?: boolean;
   pageSize?: number;
+  pageSizeOptions?: number[];
   selectable?: boolean;
   onSelect?: (selectedIds: (string | number)[]) => void;
   emptyMessage?: string;
@@ -35,6 +36,7 @@ export function DataTable<T extends Record<string, any>>({
   sortable = false,
   paginated = false,
   pageSize = 10,
+  pageSizeOptions = [10, 25, 50, 100],
   selectable = false,
   onSelect,
   emptyMessage = 'No hay datos'
@@ -46,6 +48,7 @@ export function DataTable<T extends Record<string, any>>({
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+  const [currentPageSize, setCurrentPageSize] = useState(pageSize);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -54,13 +57,19 @@ export function DataTable<T extends Record<string, any>>({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, filters]);
+  }, [debouncedSearch, filters, currentPageSize]);
 
   useEffect(() => {
     if (onSelect) {
       onSelect(Array.from(selectedIds));
     }
   }, [selectedIds, onSelect]);
+
+  useEffect(() => {
+    // Reset selection when page size changes
+    setSelectedIds(new Set());
+    setCurrentPage(1);
+  }, [currentPageSize]);
 
   const filteredData = useMemo(() => {
     let result = [...data];
@@ -111,11 +120,11 @@ export function DataTable<T extends Record<string, any>>({
 
   const paginatedData = useMemo(() => {
     if (!paginated) return sortedData;
-    const start = (currentPage - 1) * pageSize;
-    return sortedData.slice(start, start + pageSize);
-  }, [sortedData, paginated, currentPage, pageSize]);
+    const start = (currentPage - 1) * currentPageSize;
+    return sortedData.slice(start, start + currentPageSize);
+  }, [sortedData, paginated, currentPage, currentPageSize]);
 
-  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const totalPages = Math.ceil(sortedData.length / currentPageSize);
 
   const uniqueFilterOptions = useMemo(() => {
     if (!filterable) return {};
@@ -288,11 +297,35 @@ export function DataTable<T extends Record<string, any>>({
         </table>
       </div>
 
-      {paginated && totalPages > 1 && (
-        <div className="data-table-pagination" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '8px 0' }}>
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Mostrando {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, sortedData.length)} de {sortedData.length} resultados
-          </span>
+      {paginated && (
+        <div className="data-table-pagination" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '8px 0', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              {sortedData.length <= currentPageSize 
+                ? `${sortedData.length} resultado${sortedData.length !== 1 ? 's' : ''}`
+                : `Mostrando ${((currentPage - 1) * currentPageSize) + 1} - ${Math.min(currentPage * currentPageSize, sortedData.length)} de ${sortedData.length}`
+              }
+            </span>
+            {sortedData.length > currentPageSize && (
+              <select
+                value={currentPageSize}
+                onChange={e => setCurrentPageSize(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  background: 'var(--surface)',
+                  color: 'var(--text-primary)',
+                  fontSize: 12
+                }}
+              >
+                {pageSizeOptions.map(size => (
+                  <option key={size} value={size}>{size} por página</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {totalPages > 1 && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -357,6 +390,7 @@ export function DataTable<T extends Record<string, any>>({
               Siguiente
             </button>
           </div>
+          )}
         </div>
       )}
     </div>

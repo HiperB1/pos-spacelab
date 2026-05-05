@@ -8,15 +8,15 @@ interface CardProps {
 
 export function Card({ children, className = '', header }: CardProps) {
   return (
-    <div className={`bg-surface rounded-lg shadow-lg border border-border ${className}`}>
+    <div className={`card overflow-hidden ${className}`}>
       {header && (
-        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+        <div className="border-b border-white/5 px-8 py-5 flex items-center justify-between bg-white/[0.02]">
           {typeof header === 'string' ? (
-            <h3 className="text-lg font-semibold text-white">{header}</h3>
+            <h3 className="text-xl font-black text-primary uppercase tracking-tighter">{header}</h3>
           ) : header}
         </div>
       )}
-      <div className="p-6">
+      <div className="p-8">
         {children}
       </div>
     </div>

@@ -317,7 +317,7 @@ export function Reportes() {
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  formatter={(val: number) => formatCurrency(val)}
+                  formatter={(val) => formatCurrency(Number(val))}
                   labelStyle={{ color: '#fff' }}
                   itemStyle={{ color: '#fff' }}
                 />

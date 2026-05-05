@@ -8,9 +8,10 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  showCloseButton?: boolean;
 }
 
-export function Modal({ show, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ show, onClose, title, children, size = 'md', showCloseButton = true }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,15 +53,17 @@ export function Modal({ show, onClose, title, children, size = 'md' }: ModalProp
       }}
     >
       <div className={`w-full ${sizes[size]} mx-4 bg-background border border-white/5 rounded-3xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] animate-in zoom-in-95 duration-300 overflow-hidden`}>
-        {title && (
+        {(title || showCloseButton) && (
           <div className="flex items-center justify-between px-8 py-6 border-b border-white/5 bg-white/[0.02]">
-            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
-            <button
-              onClick={onClose}
-              className="p-2 text-text-secondary hover:text-white transition-all bg-white/5 hover:bg-white/10 rounded-xl"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {title ? <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3> : <div />}
+            {showCloseButton && (
+              <button
+                onClick={onClose}
+                className="p-2 text-text-secondary hover:text-white transition-all bg-white/5 hover:bg-white/10 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         )}
         <div className="p-8">

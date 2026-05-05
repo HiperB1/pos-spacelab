@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { getAllSubproductos, createSubproducto, updateSubproducto, deleteSubproducto } from '../lib/subproductos';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { exportToCSV } from '../lib/backup';
@@ -7,14 +7,7 @@ import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { toast } from 'sonner';
 import { Layers, Plus, FileSpreadsheet, Trash2, Edit3 } from 'lucide-react';
-
-interface Subproducto {
-  id: string;
-  nome: string;
-  tipo: string;
-  quantidade: number;
-  custo: number;
-}
+import type { Subproducto } from '../lib/types';
 
 export function InventarioSubproductos() {
   const [items, setItems] = useState<Subproducto[]>(() => getAllSubproductos());
@@ -22,33 +15,39 @@ export function InventarioSubproductos() {
   const [editing, setEditing] = useState<Subproducto | null>(null);
   
   const [formData, setFormData] = useState({
+    codigo: '',
     nome: '',
     tipo: '',
     quantidade: 0,
     custo: 0
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      if (editing) {
-        updateSubproducto(editing.id, formData);
-        toast.success('Subproducto actualizado');
-      } else {
-        createSubproducto(formData);
-        toast.success('Subproducto agregado');
-      }
-      setItems(getAllSubproductos());
-      setShowModal(false);
-      setEditing(null);
-    } catch (error) {
-      toast.error('Error al guardar');
-    }
-  }
+  const columns: DataTableColumn<Subproducto>[] = [
+    { key: 'codigo', header: 'Código', sortable: true },
+    { key: 'nome', header: 'Nombre', sortable: true },
+    { key: 'tipo', header: 'Tipo', sortable: true },
+    { key: 'quantidade', header: 'Stock', sortable: true, render: (item) => item.quantidade || 0 },
+    { key: 'custo', header: 'Costo', sortable: true, render: (item) => `$${item.custo?.toLocaleString('es-CO')}` },
+    {
+      key: 'acciones',
+      header: '',
+      render: (item) => (
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
+            <Edit3 className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </Button>
+        </div>
+      )
+    },
+  ];
 
   function handleEdit(item: Subproducto) {
     setEditing(item);
     setFormData({
+      codigo: item.codigo || '',
       nome: item.nome,
       tipo: item.tipo,
       quantidade: item.quantidade,
@@ -67,54 +66,44 @@ export function InventarioSubproductos() {
 
   function openModal() {
     setEditing(null);
-    setFormData({ nome: '', tipo: '', quantidade: 0, custo: 0 });
+    setFormData({ codigo: '', nome: '', tipo: '', quantidade: 0, custo: 0 });
     setShowModal(true);
   }
 
-  const columns: DataTableColumn<Subproducto>[] = useMemo(() => [
-    { key: 'nome', header: 'Nombre', sortable: true, searchable: true },
-    { key: 'tipo', header: 'Tipo', sortable: true, filterable: true },
-    { 
-      key: 'quantidade', 
-      header: 'Stock', 
-      sortable: true,
-      render: (item) => (
-        <span className={`font-bold ${item.quantidade < 10 ? 'text-yellow-400' : 'text-blue-400'}`}>
-          {item.quantidade.toLocaleString('es-CO')} uds
-        </span>
-      )
-    },
-    { 
-      key: 'custo', 
-      header: 'Costo Unit.', 
-      sortable: true,
-      render: (item) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.custo)
-    },
-    {
-      key: 'acciones',
-      header: '',
-      render: (item) => (
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => handleEdit(item)}>
-            <Edit3 className="w-4 h-4 mr-1" /> Editar
-          </Button>
-          <Button variant="danger" size="sm" onClick={() => handleDelete(item.id)}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      )
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const dataToSave = {
+      nome: formData.nome,
+      tipo: formData.tipo,
+      quantidade: formData.quantidade,
+      custo: formData.custo,
+      codigo: formData.codigo || undefined
+    };
+    try {
+      if (editing) {
+        updateSubproducto(editing.id, dataToSave);
+        toast.success('Subproducto actualizado');
+      } else {
+        createSubproducto(dataToSave);
+        toast.success('Subproducto agregado');
+      }
+      setItems(getAllSubproductos());
+      setShowModal(false);
+      setEditing(null);
+    } catch (error) {
+      toast.error('Error al guardar');
     }
-  ], []);
+  }
 
   function handleExportCSV() {
-    const cols = [
+    exportToCSV(items, 'subproductos', [
+      { key: 'codigo', label: 'Código' },
       { key: 'nome', label: 'Nombre' },
       { key: 'tipo', label: 'Tipo' },
-      { key: 'quantidade', label: 'Cantidad' },
+      { key: 'quantidade', label: 'Stock' },
       { key: 'custo', label: 'Costo' }
-    ];
-    exportToCSV(items, 'subproductos.csv', cols);
-    toast.success('Exportación completada');
+    ]);
+    toast.success('Exportado a CSV');
   }
 
   return (
@@ -132,12 +121,12 @@ export function InventarioSubproductos() {
               <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar
             </Button>
             <Button size="sm" onClick={openModal}>
-              <Plus className="w-4 h-4 mr-2" /> Agregar Parte
+              <Plus className="w-4 h-4 mr-2" /> Agregar Subproducto
             </Button>
           </div>
         </div>
         
-        <DataTable
+        <DataTable<Subproducto>
           data={items}
           columns={columns}
           keyField="id"
@@ -157,13 +146,21 @@ export function InventarioSubproductos() {
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Nombre del Subproducto"
-            value={formData.nome}
-            onChange={e => setFormData({...formData, nome: e.target.value})}
-            required
-            placeholder="Ej: Pierna Derecha - Ghost"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Código / SKU"
+              value={formData.codigo}
+              onChange={e => setFormData({...formData, codigo: e.target.value})}
+              placeholder="Ej: SP-GHOST-PD"
+            />
+            <Input
+              label="Nombre del Subproducto"
+              value={formData.nome}
+              onChange={e => setFormData({...formData, nome: e.target.value})}
+              required
+              placeholder="Ej: Pierna Derecha - Ghost"
+            />
+          </div>
           <Input
             label="Tipo/Categoría"
             value={formData.tipo}
