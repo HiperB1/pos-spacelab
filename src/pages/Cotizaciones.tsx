@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getCotizacion } from '../lib/database';
+import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getCotizacion, getProdutos, getCombos } from '../lib/database';
 import { gerarPDFCotizacion } from '../lib/pdf';
 import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult } from '../lib/envio';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
