@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
 import { Button } from '../components/ui/Button';
@@ -23,7 +25,6 @@ export function ConfiguracionPage() {
 async function handleCheckUpdate() {
     setCheckingUpdate(true);
     try {
-      const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
       if (update) {
         toast.success(`Nueva versión ${update.version} disponible`);
@@ -31,7 +32,6 @@ async function handleCheckUpdate() {
           await update.downloadAndInstall();
           localStorage.setItem('dg_last_update', new Date().toISOString());
           setLastUpdate(new Date().toLocaleDateString('es-CO'));
-          const { relaunch } = await import('@tauri-apps/plugin-process');
           toast.success('Actualización instalada. Reiniciando...');
           await relaunch();
         }
