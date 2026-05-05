@@ -102,7 +102,22 @@ function AppContent() {
         />
       )}
       
-      <Toaster position="top-right" theme="dark" closeButton richColors />
+      <Toaster
+        position="bottom-right"
+        theme="dark"
+        closeButton
+        richColors
+        expand
+        gap={8}
+        toastOptions={{
+          style: {
+            borderRadius: '12px',
+            fontSize: '0.875rem',
+            backdropFilter: 'blur(8px)',
+          },
+          duration: 4000,
+        }}
+      />
     </>
   );
 }
