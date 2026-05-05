@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  AreaChart, Area, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
+  AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   Package, Users, DollarSign, TrendingUp,
@@ -18,11 +18,6 @@ interface MonthlyData {
   total: number;
 }
 
-interface TopProduct {
-  name: string;
-  value: number;
-  color: string;
-}
 
 interface StockAlert {
   id: string;
@@ -85,30 +80,19 @@ export function Dashboard() {
     });
   }, [data]);
 
-  const topProducts: TopProduct[] = useMemo(() => {
-    const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#f97316'];
-    
-    // Calcular ventas reales por producto desde facturas
-    const ventasPorProducto: Record<string, number> = {};
+  const topDias = useMemo(() => {
+    const ventasPorDia: Record<string, number> = {};
     data.facturas.forEach(f => {
-      if (f.estado === 'activa' && f.items) {
-        f.items.forEach((item: any) => {
-          const key = item.descripcion;
-          ventasPorProducto[key] = (ventasPorProducto[key] || 0) + item.quantidade;
-        });
+      if (f.estado === 'activa') {
+        const fecha = new Date(f.fecha);
+        const key = fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit' });
+        ventasPorDia[key] = (ventasPorDia[key] || 0) + f.total;
       }
     });
-    
-    // Ordenar y tomar top 5
-    const ordenado = Object.entries(ventasPorProducto)
+    return Object.entries(ventasPorDia)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-    
-    return ordenado.map(([nome, value], idx) => ({
-      name: nome,
-      value,
-      color: COLORS[idx % COLORS.length]
-    }));
+      .slice(0, 5)
+      .map(([fecha, total]) => ({ fecha, total }));
   }, [data]);
 
   const analisisABC = useMemo(() => {
@@ -335,39 +319,24 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card header="Top Productos">
+        <Card header="Top día de más ventas">
           <div className="h-[300px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={topProducts}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={8}
-                  dataKey="value"
-                >
-                  {topProducts.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 mt-4">
-              {topProducts.map((p, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                    <span className="text-white/60">{p.name}</span>
-                  </div>
-                  <span className="text-white font-mono">{p.value}%</span>
-                </div>
-              ))}
-            </div>
+            {topDias.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topDias} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                  <XAxis dataKey="fecha" tick={{ fill: '#ffffff60', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#ffffff60', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px', color: '#fff' }}
+                    formatter={(v: unknown) => formatCurrency(v as number)}
+                  />
+                  <Bar dataKey="total" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-white/20 text-sm">Sin datos de ventas</div>
+            )}
           </div>
         </Card>
       </div>
