@@ -85,4 +85,4 @@ La aplicación utiliza una **base de datos local (DataStore)** para garantizar q
 - Puedes exportar e importar **copias de seguridad en formato JSON** desde el menú de Configuración para asegurar tu información.
 
 ---
-Desarrollado con ❤️ para **My Space** por el equipo de SpaceLab.
+Desarrollado con ❤️ para **My Space** por el equipo de RavenCorp.
