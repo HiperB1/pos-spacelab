@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getProdutos, getCombos } from '../lib/database';
+import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getCotizacion } from '../lib/database';
+import { gerarPDFCotizacion } from '../lib/pdf';
 import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult } from '../lib/envio';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
@@ -285,7 +286,12 @@ export function Cotizaciones() {
   }
 
   async function handleViewPDF(cotizacion: any) {
-    toast.info('PDF no disponible temporalmente');
+    const cotizacionCompleta = getCotizacion(cotizacion.id);
+    if (cotizacionCompleta) {
+      await gerarPDFCotizacion(cotizacionCompleta);
+    } else {
+      toast.error('Error al obtener los datos de la cotización');
+    }
   }
 
   function formatCurrency(value: number): string {
