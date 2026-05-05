@@ -1,14 +1,50 @@
 import { useState } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Save, Download, Upload, CheckCircle } from 'lucide-react';
+import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [appVersion] = useState(() => getVersion());
+  const [lastUpdate, setLastUpdate] = useState(() => {
+    const stored = localStorage.getItem('dg_last_update');
+    return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
+  });
+
+  async function handleCheckUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update?.available) {
+        toast.success(`Nueva versión ${update.version} disponible: ${update.body}`);
+        const yes = confirm(`¿Descargar e instalar versión ${update.version}?`);
+        if (yes) {
+          await update.downloadAndInstall();
+          localStorage.setItem('dg_last_update', new Date().toISOString());
+          setLastUpdate(new Date().toLocaleDateString('es-CO'));
+          toast.success('Actualización instalada. ¿Reiniciar app?');
+          if (confirm('¿Reiniciar ahora?')) {
+            await relaunch();
+          }
+        }
+      } else {
+        toast.info('Ya tienes la última versión');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al verificar actualizaciones');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,25 +76,31 @@ export function ConfiguracionPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    if (!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?')) {
-      e.target.value = '';
-      return;
-    }
+    console.log('Importing file:', file.name);
     
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = JSON.parse(event.target?.result as string);
+        const resultText = event.target?.result as string;
+        console.log('File content length:', resultText.length);
+        const data = JSON.parse(resultText);
+        console.log('Parsed JSON, keys:', Object.keys(data));
         const result = importDatabaseFromJSON(data);
+        console.log('Import result:', result);
         if (result.success) {
           toast.success(result.message);
-          window.location.reload(); // Reload to reflect major data changes
+          setTimeout(() => window.location.reload(), 1500);
         } else {
           toast.error(result.message);
         }
       } catch (err) {
+        console.error('Import error:', err);
         toast.error('Archivo JSON inválido');
       }
+    };
+    reader.onerror = () => {
+      console.error('FileReader error');
+      toast.error('Error al leer el archivo');
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -200,6 +242,50 @@ export function ConfiguracionPage() {
 
         {/* Backup Section */}
         <div className="space-y-6">
+          <div className="card">
+            <div className="card-header">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-primary" />
+                <h3 className="card-title">Actualización</h3>
+              </div>
+            </div>
+            
+            <div className="card-body space-y-4">
+              <div className="bg-surface p-4 rounded-xl border border-white/10">
+                <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Versión Actual</p>
+                <p className="text-2xl font-bold text-white">{appVersion}</p>
+              </div>
+              
+              <div className="bg-surface p-4 rounded-xl border border-white/10">
+                <div className="flex items-center gap-2 text-text-secondary text-sm">
+                  <Clock className="w-4 h-4" />
+                  <span>Última actualización:</span>
+                  <span className="text-white font-medium">{lastUpdate || 'Nunca'}</span>
+                </div>
+              </div>
+
+              <Button 
+                variant="primary" 
+                className="w-full gap-2" 
+                onClick={handleCheckUpdate}
+                loading={checkingUpdate}
+              >
+                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                Buscar Actualización
+              </Button>
+
+              <a 
+                href="https://github.com/HiperB1/pos-spacelab/releases" 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 text-sm text-text-secondary hover:text-primary transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Ver Releases en GitHub
+              </a>
+            </div>
+          </div>
+
           <div className="card h-full">
             <div className="card-header">
               <div className="flex items-center gap-2">
