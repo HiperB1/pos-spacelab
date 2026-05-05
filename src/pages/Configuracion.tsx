@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
@@ -9,13 +12,43 @@ import { toast } from 'sonner';
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
+  const [appVersion, setAppVersion] = useState(() => {
+    try {
+      return getVersion();
+    } catch {
+      return '0.1.0';
+    }
+  });
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(() => {
     const stored = localStorage.getItem('dg_last_update');
     return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
   });
 
   async function handleCheckUpdate() {
-    toast.info('Actualización de escritorio no disponible en web');
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update?.available) {
+        toast.success(`Nueva versión ${update.version} disponible`);
+        if (confirm(`¿Descargar versión ${update.version}?`)) {
+          await update.downloadAndInstall();
+          localStorage.setItem('dg_last_update', new Date().toISOString());
+          setLastUpdate(new Date().toLocaleDateString('es-CO'));
+          toast.success('Actualización installée. ¿Reiniciar?');
+          if (confirm('¿Reiniciar ahora?')) {
+            await relaunch();
+          }
+        }
+      } else {
+        toast.info('Ya tienes la última versión');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al verificar actualizaciones');
+    } finally {
+      setCheckingUpdate(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -225,7 +258,7 @@ export function ConfiguracionPage() {
             <div className="card-body space-y-4">
               <div className="bg-surface p-4 rounded-xl border border-white/10">
                 <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Versión Actual</p>
-                <p className="text-2xl font-bold text-white">0.1.0</p>
+                <p className="text-2xl font-bold text-white">{appVersion}</p>
               </div>
               
               <div className="bg-surface p-4 rounded-xl border border-white/10">
@@ -240,9 +273,9 @@ export function ConfiguracionPage() {
                 variant="primary" 
                 className="w-full gap-2" 
                 onClick={handleCheckUpdate}
-                loading={false}
+                loading={checkingUpdate}
               >
-                <RefreshCw className="w-4 h-4 animate-spin" />
+                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
                 Buscar Actualización
               </Button>
 
