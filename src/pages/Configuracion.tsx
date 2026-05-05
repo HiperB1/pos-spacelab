@@ -20,7 +20,10 @@ export function ConfiguracionPage() {
       empresa_telefono: config.empresa_telefono,
       empresa_email: config.empresa_email,
       meta_mensual: config.meta_mensual,
-      dias_laborables: config.dias_laborables
+      dias_laborables: config.dias_laborables,
+      api_key_venndelo: config.api_key_venndelo,
+      ciudad_origen: config.ciudad_origen,
+      peso_default_kg: config.peso_default_kg
     });
     setConfig(getConfiguracion());
     setSaved(true);
@@ -157,6 +160,32 @@ export function ConfiguracionPage() {
                   <p className="text-xl font-bold text-primary">
                     {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format((config.meta_mensual || 0) / (config.dias_laborables || 1))}
                   </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Integración Venndelo (Envíos)</h4>
+                <p className="text-xs text-white/40">Configura la API de Venndelo para cotizar envíos en las cotizaciones sin cliente.</p>
+                <Input
+                  label="API Key Venndelo"
+                  value={config.api_key_venndelo || ''}
+                  onChange={e => setConfig({...config, api_key_venndelo: e.target.value})}
+                  placeholder="Ingresa tu API key de Venndelo"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Ciudad Origen (código DANE)"
+                    value={config.ciudad_origen || ''}
+                    onChange={e => setConfig({...config, ciudad_origen: e.target.value})}
+                    placeholder="11001"
+                  />
+                  <Input
+                    label="Peso Default (kg)"
+                    type="number"
+                    step="0.1"
+                    value={config.peso_default_kg || 0.5}
+                    onChange={e => setConfig({...config, peso_default_kg: parseFloat(e.target.value) || 0.5})}
+                  />
                 </div>
               </div>
 

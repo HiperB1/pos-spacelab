@@ -106,6 +106,9 @@ export interface Configuracion {
   siguiente_numero_nota_credito?: number;
   meta_mensual?: number;
   dias_laborables?: number;
+  api_key_venndelo?: string;
+  ciudad_origen?: string;
+  peso_default_kg?: number;
 }
 
 export interface Cotizacion {
@@ -116,12 +119,14 @@ export interface Cotizacion {
   cliente_celular: string;
   cliente_nit: string;
   cliente_direccion: string;
+  ciudad?: string;
   fecha: string;
   fecha_vencimiento: string;
   validez_dias: number;
   subtotal: number;
   iva: number;
   descuento: number;
+  costo_envio: number;
   total: number;
   estado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida';
   notas?: string;

@@ -498,7 +498,8 @@ export function createCotizacion(data: any): any {
   const subtotal = data.items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
   const descuento = data.descuento || 0;
   const iva = 0;
-  const total = subtotal - descuento;
+  const costoEnvio = data.costo_envio || 0;
+  const total = subtotal - descuento + costoEnvio;
   
   const cotizacion: Cotizacion = {
     id,
@@ -508,12 +509,14 @@ export function createCotizacion(data: any): any {
     cliente_celular: data.cliente_celular || '',
     cliente_nit: data.cliente_nit,
     cliente_direccion: data.cliente_direccion,
+    ciudad: data.ciudad,
     fecha: new Date().toISOString().split('T')[0],
     fecha_vencimiento: fechaVencimiento.toISOString().split('T')[0],
     validez_dias: validezDias,
     subtotal,
     iva,
     descuento,
+    costo_envio: costoEnvio,
     total,
     estado: 'abierta',
     notas: data.notas || ''
