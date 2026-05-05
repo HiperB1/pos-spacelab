@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
-import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
-import { getVersion } from '@tauri-apps/api/app';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
@@ -12,22 +9,18 @@ import { toast } from 'sonner';
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
-  const [appVersion, setAppVersion] = useState(() => {
-    try {
-      return getVersion();
-    } catch {
-      return '0.1.0';
-    }
-  });
+  const [appVersion, setAppVersion] = useState('0.1.0');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(() => {
     const stored = localStorage.getItem('dg_last_update');
     return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
   });
 
-  async function handleCheckUpdate() {
+async function handleCheckUpdate() {
     setCheckingUpdate(true);
     try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const { relaunch } = await import('@tauri-apps/plugin-process');
       const update = await check();
       if (update?.available) {
         toast.success(`Nueva versión ${update.version} disponible`);
