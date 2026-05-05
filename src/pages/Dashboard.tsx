@@ -81,11 +81,13 @@ export function Dashboard() {
   }, [data]);
 
   const topDias = useMemo(() => {
+    const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     const ventasPorDia: Record<string, number> = {};
     data.facturas.forEach(f => {
-      if (f.estado === 'activa') {
-        const fecha = new Date(f.fecha);
-        const key = fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit' });
+      if (f.estado === 'activa' && f.fecha) {
+        const d = new Date(f.fecha);
+        if (isNaN(d.getTime())) return;
+        const key = `${String(d.getDate()).padStart(2,'0')} ${MESES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
         ventasPorDia[key] = (ventasPorDia[key] || 0) + f.total;
       }
     });
