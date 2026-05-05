@@ -25,24 +25,27 @@ async function handleCheckUpdate() {
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
-      if (update?.available) {
+      if (update) {
         toast.success(`Nueva versión ${update.version} disponible`);
-        if (confirm(`¿Descargar versión ${update.version}?`)) {
+        if (confirm(`¿Descargar e instalar versión ${update.version}?`)) {
           await update.downloadAndInstall();
           localStorage.setItem('dg_last_update', new Date().toISOString());
           setLastUpdate(new Date().toLocaleDateString('es-CO'));
           const { relaunch } = await import('@tauri-apps/plugin-process');
-          toast.success('Actualización instalada');
-          if (confirm('¿Reiniciar ahora?')) {
-            await relaunch();
-          }
+          toast.success('Actualización instalada. Reiniciando...');
+          await relaunch();
         }
       } else {
-        toast.info('Ya tienes la última versión');
+        toast.info('Ya tienes la última versión instalada');
       }
     } catch (e) {
-      console.error('Update check failed:', e);
-      toast.error('Error al buscar actualizaciones. Descarga la última versión manualmente desde GitHub.');
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('Update check failed:', msg);
+      if (msg.toLowerCase().includes('appimage') || msg.toLowerCase().includes('unsupported')) {
+        toast.error('Auto-actualización no disponible en esta instalación. Usa el AppImage para actualizaciones automáticas.', { duration: 8000 });
+      } else {
+        toast.error(`Error al buscar actualizaciones: ${msg}`, { duration: 6000 });
+      }
     } finally {
       setCheckingUpdate(false);
     }
