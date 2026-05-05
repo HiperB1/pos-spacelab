@@ -168,7 +168,7 @@ export function Reportes() {
     }));
     
     exportToExcel(finalData, `Reporte_Contabilidad_${fechaInicio}_a_${fechaFin}`, {
-      title: 'Reporte de Contabilidad - My Space',
+      title: 'Reporte de Contabilidad - Space Lab',
       subtitle: `Periodo: ${fechaInicio} al ${fechaFin}`,
       summary: {
         'Ventas Totales': formatCurrency(reportData.totalVentas),

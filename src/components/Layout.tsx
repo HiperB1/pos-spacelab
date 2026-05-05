@@ -62,13 +62,13 @@ export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: La
         <div className="flex items-center justify-between h-20 px-6 border-b border-white/5">
           {!collapsed ? (
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="My Space" className="w-8 h-8 rounded-lg object-contain" />
+              <img src="/logo.png" alt="Space Lab" className="w-8 h-8 rounded-lg object-contain" />
               <h1 className="text-xl font-bold text-white">
-                My Space
+                Space Lab
               </h1>
             </div>
           ) : (
-            <img src="/logo.png" alt="My Space" className="w-10 h-10 rounded-lg object-contain" />
+            <img src="/logo.png" alt="Space Lab" className="w-10 h-10 rounded-lg object-contain" />
           )}
           <button
             onClick={() => setMobileOpen(false)}
@@ -140,7 +140,7 @@ export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: La
           >
             <Menu className="w-6 h-6" />
           </button>
-          <h1 className="ml-3 text-lg font-semibold text-white">My Space</h1>
+          <h1 className="ml-3 text-lg font-semibold text-white">Space Lab</h1>
         </header>
 
         <main className="flex-1 p-6 overflow-y-auto">

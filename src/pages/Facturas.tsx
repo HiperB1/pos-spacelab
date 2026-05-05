@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getAllFacturas, getAllClientes, createFactura, getSiguienteNumero, anularFactura } from '../lib/facturas';
+import { getProdutos, getCombos } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
 import { exportToExcel, exportToCSV } from '../lib/export';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
@@ -10,15 +11,17 @@ import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { toast } from 'sonner';
 import { useNavigation } from '../context/NavigationContext';
-import { 
-  ReceiptText, 
-  Plus, 
-  FileSpreadsheet, 
-  FileText, 
-  Ban, 
-  X, 
+import {
+  ReceiptText,
+  Plus,
+  FileSpreadsheet,
+  FileText,
+  Ban,
+  X,
   Search,
-  Truck
+  Truck,
+  Package,
+  PackagePlus
 } from 'lucide-react';
 
 interface Factura {
@@ -36,6 +39,10 @@ interface Factura {
 }
 
 interface ItemFactura {
+  tipo_item: 'inventario' | 'manual';
+  origen: 'produto' | 'combo';
+  produto_id?: string;
+  combo_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -45,17 +52,19 @@ export function Facturas() {
   const { pendingAction, setPendingAction } = useNavigation();
   const [facturas, setFacturas] = useState<any[]>([]);
   const [dbClientes, setDbClientes] = useState<any[]>([]);
+  const [productos, setProductos] = useState<any[]>([]);
+  const [combos, setCombos] = useState<any[]>([]);
   const [showNueva, setShowNueva] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAnular, setShowAnular] = useState<any>(null);
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
-  
+
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
   const [filtroFecha, setFiltroFecha] = useState('este_mes');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  
+
   const [formData, setFormData] = useState({
     cliente_id: '',
     cliente_nome: '',
@@ -65,7 +74,9 @@ export function Facturas() {
   });
   const [notas, setNotas] = useState('');
   const [descuento, setDescuento] = useState(0);
-  const [items, setItems] = useState<ItemFactura[]>([{ descripcion: '', quantidade: 1, precio: 0 }]);
+  const [items, setItems] = useState<ItemFactura[]>([
+    { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }
+  ]);
 
   useEffect(() => {
     loadData();
@@ -78,13 +89,15 @@ export function Facturas() {
   function loadData() {
     setFacturas(getAllFacturas());
     setDbClientes(getAllClientes());
+    setProductos(getProdutos());
+    setCombos(getCombos());
   }
 
   const getRangoFechas = (filtro: string) => {
     const hoy = new Date();
     const año = hoy.getFullYear();
     const mes = hoy.getMonth();
-    
+
     if (filtro === 'este_mes') {
       return {
         inicio: new Date(año, mes, 1).toISOString().split('T')[0],
@@ -105,26 +118,26 @@ export function Facturas() {
 
   const facturasFiltradas = useMemo(() => {
     let result = [...facturas];
-    
+
     if (busqueda) {
       const lower = busqueda.toLowerCase();
-      result = result.filter(f => 
+      result = result.filter(f =>
         f.numero.toLowerCase().includes(lower) ||
         f.cliente_nome.toLowerCase().includes(lower) ||
         f.cliente_nit?.toLowerCase().includes(lower)
       );
     }
-    
+
     if (filtroEstado !== 'todas') {
       result = result.filter(f => f.estado === filtroEstado);
     }
-    
+
     if (filtroFecha !== 'todas') {
       const range = filtroFecha === 'rango' ? { inicio: fechaInicio, fin: fechaFin } : getRangoFechas(filtroFecha);
       if (range.inicio) result = result.filter(f => f.fecha >= range.inicio);
       if (range.fin) result = result.filter(f => f.fecha <= range.fin);
     }
-    
+
     return result;
   }, [facturas, busqueda, filtroEstado, filtroFecha, fechaInicio, fechaFin]);
 
@@ -146,7 +159,7 @@ export function Facturas() {
   }
 
   function addItem() {
-    setItems([...items, { descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([...items, { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -161,6 +174,31 @@ export function Facturas() {
     setItems(newItems);
   }
 
+  function handleSelectProducto(index: number, tipo: 'inventario' | 'manual', origen?: 'produto' | 'combo', id?: string) {
+    const newItems = [...items];
+    newItems[index].tipo_item = tipo;
+    newItems[index].origen = tipo === 'inventario' ? (origen || 'produto') : 'produto';
+    newItems[index].produto_id = undefined;
+    newItems[index].combo_id = undefined;
+    newItems[index].descripcion = '';
+    newItems[index].precio = 0;
+
+    if (tipo === 'inventario') {
+      if (newItems[index].origen === 'combo') {
+        const combo = combos.find(c => c.id === id);
+        newItems[index].combo_id = id;
+        newItems[index].descripcion = combo ? `COMBO: ${combo.nome}` : '';
+        newItems[index].precio = combo?.preco || 0;
+      } else {
+        const prod = productos.find(p => p.id === id);
+        newItems[index].produto_id = id;
+        newItems[index].descripcion = prod?.nome || '';
+        newItems[index].precio = prod?.preco || 0;
+      }
+    }
+    setItems(newItems);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validItems = items.filter(i => i.descripcion && i.quantidade > 0);
@@ -168,11 +206,20 @@ export function Facturas() {
       toast.error('Debe agregar al menos un ítem válido');
       return;
     }
-    
+
+    const itemsParaGuardar = validItems.map(item => ({
+      tipo_item: item.tipo_item === 'inventario' ? item.origen : 'manual',
+      produto_id: item.produto_id,
+      combo_id: item.combo_id,
+      descripcion: item.descripcion,
+      quantidade: item.quantidade,
+      precio: item.precio
+    }));
+
     try {
       const f = createFactura({
         ...formData,
-        items: validItems,
+        items: itemsParaGuardar,
         notas,
         descuento
       });
@@ -189,7 +236,7 @@ export function Facturas() {
     setFormData({ cliente_id: '', cliente_nome: '', cliente_celular: '', cliente_nit: '', cliente_direccion: '' });
     setNotas('');
     setDescuento(0);
-    setItems([{ descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
   }
 
   function handleAnular() {
@@ -219,10 +266,10 @@ export function Facturas() {
       Total: f.total,
       Estado: f.estado
     }));
-    
+
     if (formato === 'excel') exportToExcel(data, 'facturas.xlsx');
     else exportToCSV(data, 'facturas.csv');
-    
+
     setShowExport(false);
     toast.success('Exportación generada');
   }
@@ -239,10 +286,10 @@ export function Facturas() {
     { key: 'numero', header: 'Número', sortable: true, searchable: true },
     { key: 'fecha', header: 'Fecha', sortable: true, render: (item) => new Date(item.fecha).toLocaleDateString('es-CO') },
     { key: 'cliente_nome', header: 'Cliente', sortable: true, searchable: true },
-    { 
-      key: 'total', 
-      header: 'Total', 
-      sortable: true, 
+    {
+      key: 'total',
+      header: 'Total',
+      sortable: true,
       render: (item) => <span className="font-bold text-white">{formatCurrency(item.total)}</span>
     },
     {
@@ -298,7 +345,7 @@ export function Facturas() {
         <div className="p-4 border-b border-white/5 bg-white/[0.01] grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
-            <input 
+            <input
               className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm focus:border-primary/50 outline-none transition-colors"
               placeholder="Buscar por número o cliente..."
               value={busqueda}
@@ -332,7 +379,7 @@ export function Facturas() {
             </div>
           )}
         </div>
-        
+
         <DataTable
           data={facturasFiltradas}
           columns={columns}
@@ -366,14 +413,14 @@ export function Facturas() {
               <Input
                 label="Nombre Cliente"
                 value={formData.cliente_nome}
-                onChange={e => setFormData({...formData, cliente_nome: e.target.value})}
+                onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
                 required
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input label="Teléfono" value={formData.cliente_celular} onChange={e => setFormData({...formData, cliente_celular: e.target.value})} />
+              <Input label="Teléfono" value={formData.cliente_celular} onChange={e => setFormData({ ...formData, cliente_celular: e.target.value })} />
               <div className="md:col-span-2">
-                <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({...formData, cliente_direccion: e.target.value})} />
+                <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({ ...formData, cliente_direccion: e.target.value })} />
               </div>
             </div>
           </div>
@@ -399,7 +446,81 @@ export function Facturas() {
                 <tbody className="divide-y divide-white/5">
                   {items.map((item, idx) => (
                     <tr key={idx}>
-                      <td className="p-2"><input className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.descripcion} onChange={e => updateItem(idx, 'descripcion', e.target.value)} required /></td>
+                      <td className="p-3 space-y-2">
+                        <select
+                          value={item.tipo_item}
+                          onChange={e => handleSelectProducto(idx, e.target.value as 'inventario' | 'manual')}
+                          className="w-full border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none"
+                        >
+                          <option value="manual">✏️ Escribir manualmente</option>
+                          <option value="inventario">📦 Del inventario</option>
+                        </select>
+
+                        {item.tipo_item === 'manual' ? (
+                          <input
+                            className="w-full bg-transparent border-b border-white/10 focus:border-primary/50 py-1 text-white text-sm"
+                            placeholder="Descripción del producto o servicio"
+                            value={item.descripcion}
+                            onChange={e => updateItem(idx, 'descripcion', e.target.value)}
+                            required
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectProducto(idx, 'inventario', 'produto')}
+                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${item.origen === 'produto' ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                              >
+                                <Package className="w-3 h-3 inline mr-1" /> Productos
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectProducto(idx, 'inventario', 'combo')}
+                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${item.origen === 'combo' ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                              >
+                                <PackagePlus className="w-3 h-3 inline mr-1" /> Combos
+                              </button>
+                            </div>
+
+                            {item.origen === 'produto' && (
+                              <select
+                                value={item.produto_id || ''}
+                                onChange={e => handleSelectProducto(idx, 'inventario', 'produto', e.target.value)}
+                                className="w-full bg-[#1a1a2e] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none [&>option]:bg-[#1a1a2e] [&>option]:text-white"
+                              >
+                                <option value="">Seleccionar producto...</option>
+                                {productos.filter(p => p.quantidade_stock > 0 || p.quantidade_stock === undefined).map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nome} - {formatCurrency(p.preco)} {p.quantidade_stock !== undefined ? `(Stock: ${p.quantidade_stock})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
+                            {item.origen === 'combo' && (
+                              <select
+                                value={item.combo_id || ''}
+                                onChange={e => handleSelectProducto(idx, 'inventario', 'combo', e.target.value)}
+                                className="w-full bg-[#1a1a2e] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none [&>option]:bg-[#1a1a2e] [&>option]:text-white"
+                              >
+                                <option value="">Seleccionar combo...</option>
+                                {combos.filter(c => c.activo && c.quantidade_stock > 0).map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nome} ({c.productos.length} productos) - {formatCurrency(c.preco)} (Stock: {c.quantidade_stock})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
+                            {item.descripcion && (
+                              <div className="text-xs text-white/60 bg-white/5 px-3 py-2 rounded-lg">
+                                {item.descripcion}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white text-center" value={item.quantidade} onChange={e => updateItem(idx, 'quantidade', parseInt(e.target.value) || 0)} required /></td>
                       <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.precio} onChange={e => updateItem(idx, 'precio', parseFloat(e.target.value) || 0)} required /></td>
                       <td className="px-4 py-2 text-right font-mono text-white">{formatCurrency(item.quantidade * item.precio)}</td>
@@ -427,9 +548,9 @@ export function Facturas() {
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Descuento Manual</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-xs">$</span>
-                  <input 
-                    type="number" 
-                    value={descuento} 
+                  <input
+                    type="number"
+                    value={descuento}
                     onChange={e => setDescuento(parseFloat(e.target.value) || 0)}
                     className="w-full pl-6 pr-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-primary/50 outline-none transition-colors"
                   />
