@@ -5,8 +5,6 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
 
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
@@ -19,29 +17,7 @@ export function ConfiguracionPage() {
   });
 
 async function handleCheckUpdate() {
-    setCheckingUpdate(true);
-    try {
-      const update = await check();
-      if (update?.available) {
-        toast.success(`Nueva versión ${update.version} disponible`);
-        if (confirm(`¿Descargar versión ${update.version}?`)) {
-          await update.downloadAndInstall();
-          localStorage.setItem('dg_last_update', new Date().toISOString());
-          setLastUpdate(new Date().toLocaleDateString('es-CO'));
-          toast.success('Actualización installée. ¿Reiniciar?');
-          if (confirm('¿Reiniciar ahora?')) {
-            await relaunch();
-          }
-        }
-      } else {
-        toast.info('Ya tienes la última versión');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Error al verificar actualizaciones');
-    } finally {
-      setCheckingUpdate(false);
-    }
+    window.open('https://github.com/HiperB1/pos-spacelab/releases', '_blank');
   }
 
   function handleSubmit(e: React.FormEvent) {
