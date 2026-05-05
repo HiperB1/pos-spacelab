@@ -57,4 +57,5 @@ jobs:
           releaseBody: 'Nueva versión de My Space'
           releaseDraft: false
           prerelease: false
-          includeLatestJson: true
+          includeUpdaterJson: true
+          args: --ignore-version-mismatches
