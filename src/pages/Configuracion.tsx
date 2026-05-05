@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
-import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
-import { getVersion } from '@tauri-apps/api/app';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
@@ -12,38 +9,13 @@ import { toast } from 'sonner';
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [appVersion] = useState(() => getVersion());
   const [lastUpdate, setLastUpdate] = useState(() => {
     const stored = localStorage.getItem('dg_last_update');
     return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
   });
 
   async function handleCheckUpdate() {
-    setCheckingUpdate(true);
-    try {
-      const update = await check();
-      if (update?.available) {
-        toast.success(`Nueva versión ${update.version} disponible: ${update.body}`);
-        const yes = confirm(`¿Descargar e instalar versión ${update.version}?`);
-        if (yes) {
-          await update.downloadAndInstall();
-          localStorage.setItem('dg_last_update', new Date().toISOString());
-          setLastUpdate(new Date().toLocaleDateString('es-CO'));
-          toast.success('Actualización instalada. ¿Reiniciar app?');
-          if (confirm('¿Reiniciar ahora?')) {
-            await relaunch();
-          }
-        }
-      } else {
-        toast.info('Ya tienes la última versión');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Error al verificar actualizaciones');
-    } finally {
-      setCheckingUpdate(false);
-    }
+    toast.info('Actualización de escritorio no disponible en web');
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -268,9 +240,9 @@ export function ConfiguracionPage() {
                 variant="primary" 
                 className="w-full gap-2" 
                 onClick={handleCheckUpdate}
-                loading={checkingUpdate}
+                loading={false}
               >
-                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                <RefreshCw className="w-4 h-4 animate-spin" />
                 Buscar Actualización
               </Button>
 

@@ -217,7 +217,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
     // @ts-ignore
     pdfDocGenerator.getBlob((blob: any) => {
       const fileName = `factura_${factura.numero}.pdf`;
-      saveAs(blob, fileName, 'application/pdf');
+      saveAs(blob, fileName);
       toast.success('PDF generado correctamente', { id: toastId });
     });
   } catch (error) {
@@ -338,7 +338,7 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
     // @ts-ignore
     pdfDocGenerator.getBlob((blob: any) => {
-      saveAs(blob, `guia_${factura.numero}.pdf`, 'application/pdf');
+      saveAs(blob, `guia_${factura.numero}.pdf`);
       toast.success('Guía de envío generada', { id: toastId });
     });
   } catch (error) {
@@ -549,7 +549,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
     // @ts-ignore
     pdfDocGenerator.getBlob((blob: any) => {
-      saveAs(blob, `cotizacion_${cotizacion.numero}.pdf`, 'application/pdf');
+      saveAs(blob, `cotizacion_${cotizacion.numero}.pdf`);
       toast.success('PDF de cotización generado correctamente', { id: toastId });
     });
   } catch (error) {
