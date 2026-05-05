@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
 import { Button } from '../components/ui/Button';
@@ -9,8 +9,12 @@ import { toast } from 'sonner';
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
-  const [appVersion, setAppVersion] = useState('0.1.0');
+  const [appVersion, setAppVersion] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  useEffect(() => {
+    import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setAppVersion).catch(() => {});
+  }, []);
   const [lastUpdate, setLastUpdate] = useState(() => {
     const stored = localStorage.getItem('dg_last_update');
     return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
@@ -36,8 +40,9 @@ async function handleCheckUpdate() {
       } else {
         toast.info('Ya tienes la última versión');
       }
-    } catch {
-      window.open('https://github.com/HiperB1/pos-spacelab/releases', '_blank');
+    } catch (e) {
+      console.error('Update check failed:', e);
+      toast.error('Error al buscar actualizaciones. Descarga la última versión manualmente desde GitHub.');
     } finally {
       setCheckingUpdate(false);
     }
