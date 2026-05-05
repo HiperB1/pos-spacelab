@@ -10,6 +10,7 @@ import { Package, Plus, FileSpreadsheet, Trash2, Edit3 } from 'lucide-react';
 
 interface MateriaPrima {
   id: string;
+  codigo?: string;
   nome: string;
   tipo: string;
   color: string;
@@ -24,6 +25,7 @@ export function InventarioMP() {
   const [editing, setEditing] = useState<MateriaPrima | null>(null);
   
   const [formData, setFormData] = useState({
+    codigo: '',
     nome: '',
     tipo: '',
     color: '',
@@ -32,27 +34,10 @@ export function InventarioMP() {
     preco_kg: 0
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      if (editing) {
-        updateMateriaPrima(editing.id, formData);
-        toast.success('Materia prima actualizada');
-      } else {
-        createMateriaPrima(formData);
-        toast.success('Materia prima agregada');
-      }
-      setItems(getAllMateriasPrimas());
-      setShowModal(false);
-      setEditing(null);
-    } catch (error) {
-      toast.error('Error al guardar');
-    }
-  }
-
   function handleEdit(item: MateriaPrima) {
     setEditing(item);
     setFormData({
+      codigo: item.codigo || '',
       nome: item.nome,
       tipo: item.tipo,
       color: item.color || '',
@@ -61,6 +46,33 @@ export function InventarioMP() {
       preco_kg: item.preco_kg
     });
     setShowModal(true);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const dataToSave = {
+      nome: formData.nome,
+      tipo: formData.tipo,
+      color: formData.color,
+      fornecedor: formData.fornecedor,
+      quantidade_kg: formData.quantidade_kg,
+      preco_kg: formData.preco_kg,
+      codigo: formData.codigo || undefined
+    };
+    try {
+      if (editing) {
+        updateMateriaPrima(editing.id, dataToSave);
+        toast.success('Materia prima actualizada');
+      } else {
+        createMateriaPrima(dataToSave);
+        toast.success('Materia prima agregada');
+      }
+      setItems(getAllMateriasPrimas());
+      setShowModal(false);
+      setEditing(null);
+    } catch (error) {
+      toast.error('Error al guardar');
+    }
   }
 
   function handleDelete(id: string) {
@@ -73,11 +85,12 @@ export function InventarioMP() {
 
   function openModal() {
     setEditing(null);
-    setFormData({ nome: '', tipo: '', color: '', fornecedor: '', quantidade_kg: 0, preco_kg: 0 });
+    setFormData({ codigo: '', nome: '', tipo: '', color: '', fornecedor: '', quantidade_kg: 0, preco_kg: 0 });
     setShowModal(true);
   }
 
   const columns: DataTableColumn<MateriaPrima>[] = useMemo(() => [
+    { key: 'codigo', header: 'SKU', sortable: true, searchable: true },
     { key: 'nome', header: 'Nombre', sortable: true, searchable: true },
     { key: 'tipo', header: 'Tipo', sortable: true, filterable: true },
     { key: 'color', header: 'Color' },
@@ -167,13 +180,21 @@ export function InventarioMP() {
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Nombre del Material"
-            value={formData.nome}
-            onChange={e => setFormData({...formData, nome: e.target.value})}
-            required
-            placeholder="Ej: Filamento PLA Turquesa"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Código / SKU"
+              value={formData.codigo}
+              onChange={e => setFormData({...formData, codigo: e.target.value})}
+              placeholder="Ej: PLA-TUR-001"
+            />
+            <Input
+              label="Nombre del Material"
+              value={formData.nome}
+              onChange={e => setFormData({...formData, nome: e.target.value})}
+              required
+              placeholder="Ej: Filamento PLA Turquesa"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Tipo/Material"

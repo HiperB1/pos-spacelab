@@ -10,13 +10,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, as: Component = 'button', children, ...props }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] shadow-sm';
+    const baseStyles = 'inline-flex items-center justify-center font-extrabold rounded-full transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] tracking-widest uppercase';
 
     const variants = {
-      primary: 'bg-gradient-to-r from-primary to-blue-600 text-white hover:brightness-110 hover:shadow-xl hover:shadow-primary/20',
-      secondary: 'bg-white/5 text-white hover:bg-white/10 hover:shadow-xl hover:shadow-black/20 border border-white/10',
-      danger: 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white hover:shadow-xl hover:shadow-red-500/20 border border-red-500/20',
-      ghost: 'bg-transparent text-text-secondary hover:text-white hover:bg-white/5',
+      primary: 'bg-primary text-primary-foreground hover:brightness-110 hover:shadow-lg hover:shadow-primary/30',
+      secondary: 'bg-white/5 text-primary hover:bg-white/10 hover:shadow-lg hover:shadow-black/20 border-2 border-primary/20',
+      danger: 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border-2 border-red-500/20',
+      ghost: 'bg-transparent text-white/40 hover:text-primary hover:bg-white/5',
     };
 
     const sizes = {

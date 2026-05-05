@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 
-type TabType = 'dashboard' | 'inventario' | 'disponibilidad' | 'clientes' | 'facturas' | 'historial' | 'configuracion';
+type TabType = 'dashboard' | 'inventario' | 'disponibilidad' | 'cotizaciones' | 'notas_credito' | 'clientes' | 'pedidos' | 'facturas' | 'reportes' | 'historial' | 'configuracion';
 
 interface NavigationContextType {
   activeTab: TabType;

@@ -13,8 +13,11 @@ import { Box, Plus, FileSpreadsheet, Trash2, Edit3, Settings2 } from 'lucide-rea
 
 interface Produto {
   id: string;
+  codigo?: string;
   nome: string;
   descripcion: string;
+  categoria?: string;
+  tags?: string[];
   preco: number;
   custo: number;
   quantidade_stock?: number;
@@ -29,8 +32,11 @@ export function InventarioProductos() {
   const [selectedProd, setSelectedProd] = useState<Produto | null>(null);
   
   const [formData, setFormData] = useState({
+    codigo: '',
     nome: '',
     descripcion: '',
+    categoria: '',
+    tags: '',
     preco: 0,
     custo: 0
   });
@@ -51,12 +57,23 @@ export function InventarioProductos() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    const dataToSave = {
+      nome: formData.nome,
+      descripcion: formData.descripcion,
+      preco: formData.preco,
+      custo: formData.custo,
+      codigo: formData.codigo || undefined,
+      categoria: formData.categoria || undefined,
+      tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined
+    };
+    
     try {
       if (editing) {
-        updateProductRow(editing.id, formData);
+        updateProductRow(editing.id, dataToSave);
         toast.success('Producto actualizado');
       } else {
-        addProduto(formData);
+        addProduto(dataToSave);
         toast.success('Producto creado');
       }
       loadData();
@@ -70,8 +87,11 @@ export function InventarioProductos() {
   function handleEdit(item: Produto) {
     setEditing(item);
     setFormData({
+      codigo: item.codigo || '',
       nome: item.nome,
       descripcion: item.descripcion || '',
+      categoria: item.categoria || '',
+      tags: item.tags?.join(', ') || '',
       preco: item.preco,
       custo: item.custo
     });
@@ -86,9 +106,9 @@ export function InventarioProductos() {
     }
   }
 
-  function openModal() {
+function openModal() {
     setEditing(null);
-    setFormData({ nome: '', descripcion: '', preco: 0, custo: 0 });
+    setFormData({ codigo: '', nome: '', descripcion: '', categoria: '', tags: '', preco: 0, custo: 0 });
     setShowModal(true);
   }
 
@@ -136,19 +156,14 @@ export function InventarioProductos() {
   const subproductos = getAllSubproductos();
 
   const columns: DataTableColumn<Produto>[] = useMemo(() => [
+    { key: 'codigo', header: 'SKU', sortable: true, searchable: true },
     { key: 'nome', header: 'Nombre', sortable: true, searchable: true },
-    { key: 'descripcion', header: 'Descripción', sortable: true, searchable: true },
+    { key: 'categoria', header: 'Categoría', sortable: true, filterable: true },
     { 
       key: 'preco', 
-      header: 'Precio Venta', 
+      header: 'Precio', 
       sortable: true,
       render: (item) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.preco)
-    },
-    { 
-      key: 'custo', 
-      header: 'Costo Prod.', 
-      sortable: true,
-      render: (item) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.custo)
     },
     {
       key: 'quantidade_stock',
@@ -217,19 +232,41 @@ export function InventarioProductos() {
         title={editing ? 'Editar Producto' : 'Nuevo Producto'}
         size="md"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Nombre del Producto"
-            value={formData.nome}
-            onChange={e => setFormData({...formData, nome: e.target.value})}
-            required
-            placeholder="Ej: Ghost Articulado 15cm"
-          />
+<form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Código / SKU"
+              value={formData.codigo}
+              onChange={e => setFormData({...formData, codigo: e.target.value})}
+              placeholder="Ej: GS-001"
+            />
+            <Input
+              label="Nombre del Producto"
+              value={formData.nome}
+              onChange={e => setFormData({...formData, nome: e.target.value})}
+              required
+              placeholder="Ej: Ghost Articulado 15cm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Categoría"
+              value={formData.categoria}
+              onChange={e => setFormData({...formData, categoria: e.target.value})}
+              placeholder="Ej: Figuras, Collares, Llaveros"
+            />
+            <Input
+              label="Tags"
+              value={formData.tags}
+              onChange={e => setFormData({...formData, tags: e.target.value})}
+              placeholder="Ej: popular, navidad, promo"
+            />
+          </div>
           <Input
             label="Descripción"
             value={formData.descripcion}
             onChange={e => setFormData({...formData, descripcion: e.target.value})}
-            placeholder="Detalles adicionales..."
+placeholder="Detalles adicionales..."
           />
           <div className="grid grid-cols-2 gap-4">
             <Input

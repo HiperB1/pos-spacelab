@@ -11,13 +11,16 @@ import {
   ChevronLeft,
   History,
   BarChart3,
-  Truck
+  Truck,
+  Quote,
+  Receipt
 } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  onShowShortcuts?: () => void;
 }
 
 const tabs = [
@@ -25,6 +28,8 @@ const tabs = [
   { id: 'inventario', label: 'Inventario', icon: Package },
   { id: 'disponibilidad', label: 'Disponibilidad', icon: Layers },
   { id: 'pedidos', label: 'Pedidos', icon: Truck },
+  { id: 'cotizaciones', label: 'Cotizaciones', icon: Quote },
+  { id: 'notas_credito', label: 'Notas Crédito', icon: Receipt },
   { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'facturas', label: 'Facturas', icon: FileText },
   { id: 'reportes', label: 'Contabilidad', icon: BarChart3 },
@@ -32,7 +37,7 @@ const tabs = [
   { id: 'configuracion', label: 'Configuración', icon: Settings }
 ];
 
-export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
+export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 

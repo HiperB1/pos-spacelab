@@ -10,12 +10,16 @@ export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
   optimizeDeps: {
-    exclude: ['sql.js'],
-    fallbackResolve: false
-  },
-
-  build: {
-    target: 'esnext'
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'recharts',
+      'lucide-react',
+      'sonner',
+      'pdfmake/build/pdfmake',
+      'file-saver',
+    ]
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

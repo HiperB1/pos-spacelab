@@ -1,9 +1,0 @@
-export { getConfiguracion } from './database';
-export { getClientes } from './database';
-export { getMateriasPrimas } from './database';
-export { getSubproductos } from './database';
-export { getProdutos } from './database';
-export { getComponentes } from './database';
-export { getFacturas } from './database';
-export { getSiguienteNumero } from './database';
-export { initDatabase } from './database';

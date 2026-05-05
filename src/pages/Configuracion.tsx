@@ -201,6 +201,25 @@ export function ConfiguracionPage() {
 
               <div className="pt-6 border-t border-white/5">
                 <p className="text-sm text-text-secondary mb-4">
+                  Verifica que el almacenamiento local esté funcionando correctamente y que tus datos se guarden en el disco.
+                </p>
+                <Button 
+                  variant="ghost" 
+                  className="w-full gap-2 border border-white/10 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/50"
+                  onClick={async () => {
+                    const { runPersistenceTest } = await import('../lib/testPersistencia');
+                    const result = await runPersistenceTest();
+                    if (result.success) toast.success(result.message);
+                    else toast.error(result.message);
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Ejecutar Test de Persistencia
+                </Button>
+              </div>
+
+              <div className="pt-6 border-t border-white/5">
+                <p className="text-sm text-text-secondary mb-4">
                   Importa un archivo previo. <span className="text-red-400 font-medium">Atención:</span> Esta acción sobrescribirá todos los datos actuales.
                 </p>
                 <label className="block">
