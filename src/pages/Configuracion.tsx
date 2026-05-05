@@ -225,7 +225,7 @@ export function ConfiguracionPage() {
             <div className="card-body space-y-4">
               <div className="bg-surface p-4 rounded-xl border border-white/10">
                 <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Versión Actual</p>
-                <p className="text-2xl font-bold text-white">{appVersion}</p>
+                <p className="text-2xl font-bold text-white">0.1.0</p>
               </div>
               
               <div className="bg-surface p-4 rounded-xl border border-white/10">
