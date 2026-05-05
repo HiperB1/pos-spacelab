@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0NDUyRjVFMzE2NEVFQTkKUldTcDdtUXhYaTlGTktFWXVyUWhNd0srYVpsdTBNQ1NSUzZFdVpGdjFUTHh1Qldrd0VDSVMwNUQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVGMzVBRTY3Q0Q4RDlEN0QKUldSOW5ZM05aNjQxWHhtY1JNVC9GaTAxOHFtVHR0Nnd5bndXTVpEN1ZZU1dDS0EvT2xNY0gvNUgK",
       "endpoints": [
         "https://github.com/HiperB1/pos-spacelab/releases/latest/download/latest.json"
       ],
