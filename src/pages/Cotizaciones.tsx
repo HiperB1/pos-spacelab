@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion } from '../lib/database';
-// import { gerarPDFCotizacion } from '../lib/pdf';
+import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion } from '../lib/database';
+import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult } from '../lib/envio';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -15,10 +15,9 @@ import {
   Search,
   Check,
   XCircle,
-  Clock,
   Trash2,
-  Copy,
-  Send
+  Truck,
+  Loader2
 } from 'lucide-react';
 
 interface Cotizacion {
@@ -28,7 +27,9 @@ interface Cotizacion {
   fecha_vencimiento: string;
   cliente_nome: string;
   cliente_nit: string;
+  ciudad?: string;
   subtotal: number;
+  costo_envio: number;
   total: number;
   estado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida';
 }
@@ -45,8 +46,7 @@ export function Cotizaciones() {
   const [showNueva, setShowNueva] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
-  
-  console.log('[Cotizaciones] Rendering, cotizaciones:', cotizaciones.length, 'showNueva:', showNueva);
+  const [ciudades, setCiudades] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     cliente_id: '',
@@ -59,10 +59,28 @@ export function Cotizaciones() {
   const [descuento, setDescuento] = useState(0);
   const [validezDias, setValidezDias] = useState(15);
   const [items, setItems] = useState<ItemCotizacion[]>([{ descripcion: '', quantidade: 1, precio: 0 }]);
+  
+  const [ciudadDestino, setCiudadDestino] = useState('');
+  const [subdivisionDestino, setSubdivisionDestino] = useState('');
+  const [pesoKg, setPesoKg] = useState(0.5);
+  const [costoEnvio, setCostoEnvio] = useState(0);
+  const [cargandoEnvio, setCargandoEnvio] = useState(false);
+  const [quotesDisponibles, setQuotesDisponibles] = useState<CotizacionEnvioResult[]>([]);
+  const [quoteSeleccionado, setQuoteSeleccionado] = useState<CotizacionEnvioResult | null>(null);
 
   useEffect(() => {
     loadData();
+    loadCiudades();
   }, []);
+
+  async function loadCiudades() {
+    try {
+      const cities = await getCiudadesCotizacion();
+      setCiudades(cities);
+    } catch (e) {
+      console.warn('Error loading cities:', e);
+    }
+  }
 
   function loadData() {
     setCotizaciones(getCotizaciones());
@@ -77,6 +95,7 @@ export function Cotizaciones() {
       result = result.filter(c => 
         c.numero.toLowerCase().includes(lower) ||
         c.cliente_nome.toLowerCase().includes(lower) ||
+        c.ciudad?.toLowerCase().includes(lower) ||
         c.cliente_nit?.toLowerCase().includes(lower)
       );
     }
@@ -121,6 +140,45 @@ export function Cotizaciones() {
     setItems(newItems);
   }
 
+  async function handleCotizarEnvio() {
+    if (!ciudadDestino) {
+      toast.error('Selecciona una ciudad de destino');
+      return;
+    }
+
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.error(' API key de Venndelo no configurada. Configúrala en Configuración.');
+      return;
+    }
+
+    setCargandoEnvio(true);
+    try {
+      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino);
+      setQuotesDisponibles(quotes);
+      
+      if (quotes.length > 0) {
+        const cheapest = quotes.reduce((min, q) => q.price < min.price ? q : min, quotes[0]);
+        setQuoteSeleccionado(cheapest);
+        setCostoEnvio(cheapest.price);
+        toast.success(`Costo de envío: ${formatCurrency(cheapest.price)}`);
+      } else {
+        toast.warning('No hay cotizaciones disponibles para esta ciudad');
+      }
+    } catch (e: any) {
+      console.error('Error cotizando:', e);
+      toast.error(e.message || 'Error al cotizar envío');
+    } finally {
+      setCargandoEnvio(false);
+    }
+  }
+
+  function seleccionarQuote(quote: CotizacionEnvioResult) {
+    setQuoteSeleccionado(quote);
+    setCostoEnvio(quote.price);
+    toast.success(`Envío seleccionado: ${quote.carrier} - ${quote.service}`);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validItems = items.filter(i => i.descripcion && i.quantidade > 0);
@@ -129,13 +187,21 @@ export function Cotizaciones() {
       return;
     }
     
+    const tieneCliente = formData.cliente_id || formData.cliente_nome;
+    if (!tieneCliente && !ciudadDestino) {
+      toast.error('Debe seleccionar un cliente o ingresar una ciudad de destino');
+      return;
+    }
+
     try {
       const c = createCotizacion({
         ...formData,
         items: validItems,
         notas,
         descuento,
-        validez_dias: validezDias
+        validez_dias: validezDias,
+        ciudad: ciudadDestino,
+        costo_envio: costoEnvio
       });
       toast.success('Cotización creada: ' + c.numero);
       setShowNueva(false);
@@ -152,6 +218,12 @@ export function Cotizaciones() {
     setDescuento(0);
     setValidezDias(15);
     setItems([{ descripcion: '', quantidade: 1, precio: 0 }]);
+    setCiudadDestino('');
+    setSubdivisionDestino('');
+    setPesoKg(0.5);
+    setCostoEnvio(0);
+    setQuotesDisponibles([]);
+    setQuoteSeleccionado(null);
   }
 
   function handleCambiarEstado(id: string, nuevoEstado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida') {
@@ -169,9 +241,7 @@ export function Cotizaciones() {
   }
 
   async function handleViewPDF(cotizacion: any) {
-    // TODO: Re-enable PDF generation when pdf.ts is fixed
     toast.info('PDF no disponible temporalmente');
-    // await gerarPDFCotizacion(cotizacion);
   }
 
   function formatCurrency(value: number): string {
@@ -179,7 +249,7 @@ export function Cotizaciones() {
   }
 
   const subtotal = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
-  const total = subtotal - descuento;
+  const total = subtotal - descuento + costoEnvio;
 
   const getEstadoBadge = (estado: string) => {
     const variants = {
@@ -202,6 +272,19 @@ export function Cotizaciones() {
     { key: 'fecha', header: 'Fecha', sortable: true, render: (item) => new Date(item.fecha).toLocaleDateString('es-CO') },
     { key: 'fecha_vencimiento', header: 'Válido hasta', sortable: true, render: (item) => new Date(item.fecha_vencimiento).toLocaleDateString('es-CO') },
     { key: 'cliente_nome', header: 'Cliente', sortable: true, searchable: true },
+    { key: 'ciudad', header: 'Ciudad', sortable: true, render: (item) => item.ciudad || '-' },
+    { 
+      key: 'subtotal', 
+      header: 'Subtotal', 
+      sortable: true, 
+      render: (item) => formatCurrency(item.subtotal)
+    },
+    { 
+      key: 'costo_envio', 
+      header: 'Envío', 
+      sortable: true, 
+      render: (item) => item.costo_envio > 0 ? formatCurrency(item.costo_envio) : '-'
+    },
     { 
       key: 'total', 
       header: 'Total', 
@@ -259,7 +342,7 @@ export function Cotizaciones() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
             <input 
               className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm focus:border-primary/50 outline-none transition-colors"
-              placeholder="Buscar por número o cliente..."
+              placeholder="Buscar por número, cliente o ciudad..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
             />
@@ -301,7 +384,7 @@ export function Cotizaciones() {
                 value={formData.cliente_id}
                 onChange={e => handleClienteSelect(e.target.value)}
                 options={[
-                  { value: '', label: 'Cliente Ocasional' },
+                  { value: '', label: 'Cliente Ocasional (sin registro)' },
                   ...dbClientes.map(c => ({ value: c.id, label: c.nome }))
                 ]}
               />
@@ -309,7 +392,6 @@ export function Cotizaciones() {
                 label="Nombre Cliente"
                 value={formData.cliente_nome}
                 onChange={e => setFormData({...formData, cliente_nome: e.target.value})}
-                required
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -317,6 +399,102 @@ export function Cotizaciones() {
               <Input label="NIT" value={formData.cliente_nit} onChange={e => setFormData({...formData, cliente_nit: e.target.value})} />
               <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({...formData, cliente_direccion: e.target.value})} />
             </div>
+            
+            {!formData.cliente_id && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+                <div>
+                  <Select
+                    label="Ciudad Destino (requerido para cotizaciones sin cliente)"
+                    value={ciudadDestino}
+                    onChange={e => {
+                      const code = e.target.value;
+                      setCiudadDestino(code);
+                      const ciudad = ciudades.find(c => c.code === code);
+                      setSubdivisionDestino(ciudad?.subdivision_code || '');
+                      setCostoEnvio(0);
+                      setQuotesDisponibles([]);
+                      setQuoteSeleccionado(null);
+                    }}
+                    options={[
+                      { value: '', label: 'Seleccionar ciudad...' },
+                      ...ciudades.map(c => ({ value: c.code, label: `${c.name} (${c.department})` }))
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Input 
+                    label="Peso del envío (kg)" 
+                    type="number" 
+                    step="0.1"
+                    min="0.1"
+                    value={pesoKg} 
+                    onChange={e => setPesoKg(parseFloat(e.target.value) || 0.5)} 
+                  />
+                </div>
+                
+                {ciudadDestino && (
+                  <div className="col-span-1 md:col-span-2">
+                    <Button 
+                      type="button"
+                      variant="secondary" 
+                      onClick={handleCotizarEnvio}
+                      disabled={cargandoEnvio || !ciudadDestino}
+                      className="w-full"
+                    >
+                      {cargandoEnvio ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Truck className="w-4 h-4 mr-2" />
+                      )}
+                      {cargandoEnvio ? 'Cotizando...' : 'Calcular Costo de Envío'}
+                    </Button>
+                  </div>
+                )}
+                
+                {quotesDisponibles.length > 0 && (
+                  <div className="col-span-1 md:col-span-2 space-y-2">
+                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest">
+                      Opciones de envío disponibles
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
+                      {quotesDisponibles.map((quote, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => seleccionarQuote(quote)}
+                          className={`p-2 rounded-xl border text-left transition-all ${
+                            quoteSeleccionado?.price === quote.price
+                              ? 'bg-blue-500/20 border-blue-500 text-white'
+                              : 'bg-white/5 border-white/10 text-white/60 hover:border-white/30'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <span className="font-medium">{quote.carrier}</span>
+                              <span className="text-xs ml-2 opacity-60">{quote.service}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-bold text-blue-400">{formatCurrency(quote.price)}</span>
+                              <span className="text-xs block opacity-60">{quote.deliveryTime}</span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {costoEnvio > 0 && (
+                  <div className="col-span-1 md:col-span-2 p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+                    <div className="flex justify-between items-center">
+                      <span className="text-green-400">Costo de envío:</span>
+                      <span className="font-bold text-green-400">{formatCurrency(costoEnvio)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input 
                 label="Validez (días)" 
@@ -348,9 +526,9 @@ export function Cotizaciones() {
                 <tbody className="divide-y divide-white/5">
                   {items.map((item, idx) => (
                     <tr key={idx}>
-                      <td className="p-2"><input className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.descripcion} onChange={e => updateItem(idx, 'descripcion', e.target.value)} required /></td>
-                      <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white text-center" value={item.quantidade} onChange={e => updateItem(idx, 'quantidade', parseInt(e.target.value) || 0)} required /></td>
-                      <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.precio} onChange={e => updateItem(idx, 'precio', parseFloat(e.target.value) || 0)} required /></td>
+                      <td className="p-2"><input className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.descripcion} onChange={e => updateItem(idx, 'descripcion', e.target.value)} /></td>
+                      <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white text-center" value={item.quantidade} onChange={e => updateItem(idx, 'quantidade', parseInt(e.target.value) || 0)} /></td>
+                      <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.precio} onChange={e => updateItem(idx, 'precio', parseFloat(e.target.value) || 0)} /></td>
                       <td className="px-4 py-2 text-right font-mono text-white">{formatCurrency(item.quantidade * item.precio)}</td>
                       <td className="p-2">
                         {items.length > 1 && <button type="button" onClick={() => removeItem(idx)} className="text-white/20 hover:text-red-400"><X className="w-4 h-4" /></button>}
@@ -372,6 +550,12 @@ export function Cotizaciones() {
                 <span>Subtotal:</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
+              {costoEnvio > 0 && (
+                <div className="flex justify-between text-white/40 text-sm">
+                  <span>Envío:</span>
+                  <span>{formatCurrency(costoEnvio)}</span>
+                </div>
+              )}
               <div className="flex flex-col gap-1 pb-2 border-b border-white/5">
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Descuento</label>
                 <div className="relative">
