@@ -17,7 +17,30 @@ export function ConfiguracionPage() {
   });
 
 async function handleCheckUpdate() {
-    window.open('https://github.com/HiperB1/pos-spacelab/releases', '_blank');
+    setCheckingUpdate(true);
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+      if (update?.available) {
+        toast.success(`Nueva versión ${update.version} disponible`);
+        if (confirm(`¿Descargar versión ${update.version}?`)) {
+          await update.downloadAndInstall();
+          localStorage.setItem('dg_last_update', new Date().toISOString());
+          setLastUpdate(new Date().toLocaleDateString('es-CO'));
+          const { relaunch } = await import('@tauri-apps/plugin-process');
+          toast.success('Actualización instalada');
+          if (confirm('¿Reiniciar ahora?')) {
+            await relaunch();
+          }
+        }
+      } else {
+        toast.info('Ya tienes la última versión');
+      }
+    } catch {
+      window.open('https://github.com/HiperB1/pos-spacelab/releases', '_blank');
+    } finally {
+      setCheckingUpdate(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
