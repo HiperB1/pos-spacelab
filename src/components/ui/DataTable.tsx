@@ -1,4 +1,5 @@
 import { ReactNode, useState, useMemo, useEffect } from 'react';
+import { Database, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 
 export interface DataTableColumn<T> {
   key: keyof T | string;
@@ -298,49 +299,80 @@ export function DataTable<T extends Record<string, any>>({
       </div>
 
       {paginated && (
-        <div className="data-table-pagination" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '8px 0', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {sortedData.length <= currentPageSize 
-                ? `${sortedData.length} resultado${sortedData.length !== 1 ? 's' : ''}`
-                : `Mostrando ${((currentPage - 1) * currentPageSize) + 1} - ${Math.min(currentPage * currentPageSize, sortedData.length)} de ${sortedData.length}`
-              }
-            </span>
+        <div className="data-table-pagination" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginTop: 16, 
+          padding: '12px 16px', 
+          flexWrap: 'wrap', 
+          gap: 16,
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 8,
+              padding: '6px 12px',
+              background: 'rgba(0, 212, 255, 0.1)',
+              borderRadius: 8,
+              border: '1px solid rgba(0, 212, 255, 0.2)'
+            }}>
+              <Database size={14} style={{ color: 'var(--primary)' }} />
+              <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>
+                {sortedData.length <= currentPageSize 
+                  ? `${sortedData.length} resultado${sortedData.length !== 1 ? 's' : ''}`
+                  : `Mostrando ${((currentPage - 1) * currentPageSize) + 1}-${Math.min(currentPage * currentPageSize, sortedData.length)} de ${sortedData.length}`
+                }
+              </span>
+            </div>
             {sortedData.length > currentPageSize && (
-              <select
-                value={currentPageSize}
-                onChange={e => setCurrentPageSize(Number(e.target.value))}
-                style={{
-                  padding: '4px 8px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 4,
-                  background: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                  fontSize: 12
-                }}
-              >
-                {pageSizeOptions.map(size => (
-                  <option key={size} value={size}>{size} por página</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Layers size={14} style={{ color: 'var(--text-secondary)' }} />
+                <select
+                  value={currentPageSize}
+                  onChange={e => setCurrentPageSize(Number(e.target.value))}
+                  style={{
+                    padding: '5px 8px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    background: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  {pageSizeOptions.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
           {totalPages > 1 && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               style={{
-                padding: '6px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
                 border: '1px solid var(--border)',
-                borderRadius: 6,
-                background: currentPage === 1 ? 'var(--surface)' : 'var(--primary)',
-                color: currentPage === 1 ? 'var(--text-secondary)' : 'white',
+                borderRadius: 8,
+                background: currentPage === 1 ? 'transparent' : 'var(--surface)',
+                color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text-primary)',
                 cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                fontSize: 13
+                transition: 'all 0.2s ease'
               }}
             >
-              Anterior
+              <ChevronLeft size={16} />
             </button>
             
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -360,13 +392,20 @@ export function DataTable<T extends Record<string, any>>({
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
                   style={{
-                    padding: '6px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 32,
+                    height: 32,
+                    padding: '0 8px',
                     border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    background: currentPage === pageNum ? 'var(--primary)' : 'var(--surface)',
-                    color: currentPage === pageNum ? 'white' : 'var(--text-primary)',
+                    borderRadius: 8,
+                    background: currentPage === pageNum ? 'var(--primary)' : 'transparent',
+                    color: currentPage === pageNum ? 'white' : 'var(--text-secondary)',
                     cursor: 'pointer',
-                    fontSize: 13
+                    fontSize: 13,
+                    fontWeight: currentPage === pageNum ? 600 : 400,
+                    transition: 'all 0.2s ease'
                   }}
                 >
                   {pageNum}
@@ -378,16 +417,20 @@ export function DataTable<T extends Record<string, any>>({
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               style={{
-                padding: '6px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
                 border: '1px solid var(--border)',
-                borderRadius: 6,
-                background: currentPage === totalPages ? 'var(--surface)' : 'var(--primary)',
-                color: currentPage === totalPages ? 'var(--text-secondary)' : 'white',
+                borderRadius: 8,
+                background: currentPage === totalPages ? 'transparent' : 'var(--surface)',
+                color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text-primary)',
                 cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                fontSize: 13
+                transition: 'all 0.2s ease'
               }}
             >
-              Siguiente
+              <ChevronRight size={16} />
             </button>
           </div>
           )}
