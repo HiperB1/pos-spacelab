@@ -42,6 +42,23 @@ export interface Produto {
   quantidade_stock?: number;
 }
 
+export interface Combo {
+  id: string;
+  nome: string;
+  descripcion: string;
+  productos: ComboProducto[];
+  preco: number;
+  quantidade_stock: number;
+  stock_minimo?: number;
+  activo: boolean;
+  created_at?: string;
+}
+
+export interface ComboProducto {
+  produto_id: string;
+  quantidade: number;
+}
+
 export interface Domiciliario {
   id: string;
   nome: string;
@@ -87,6 +104,9 @@ export interface Factura {
 export interface FacturaItem {
   id: string;
   factura_id: string;
+  tipo_item: 'produto' | 'combo' | 'manual';
+  produto_id?: string;
+  combo_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -135,6 +155,9 @@ export interface Cotizacion {
 export interface CotizacionItem {
   id: string;
   cotizacion_id: string;
+  tipo_item: 'produto' | 'combo' | 'manual';
+  produto_id?: string;
+  combo_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -170,7 +193,7 @@ export interface NotaCreditoItem {
 export interface InventarioMovimiento {
   id: string;
   tipo: 'entrada' | 'salida' | 'ajuste';
-  tabla: 'materias_primas' | 'subproductos' | 'productos';
+  tabla: 'materias_primas' | 'subproductos' | 'productos' | 'combos';
   registro_id: string;
   registro_nombre: string;
   campo: string;

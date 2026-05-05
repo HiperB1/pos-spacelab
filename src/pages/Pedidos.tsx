@@ -37,7 +37,7 @@ export function Pedidos() {
       if (f.estado !== 'activa') return false;
       const matchStatus = tab === 'pendientes' 
         ? (!f.estado_entrega || f.estado_entrega === 'pendiente')
-        : (f.estado_entrega === 'despachado');
+        : (f.estado_entrega === 'en_despacho' || f.estado_entrega === 'despachado');
       
       const matchSearch = search === '' || 
         f.numero.toLowerCase().includes(search.toLowerCase()) ||

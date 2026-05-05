@@ -52,9 +52,9 @@ export function Modal({ show, onClose, title, children, size = 'md', showCloseBu
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className={`w-full ${sizes[size]} mx-4 bg-background border border-white/5 rounded-3xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] animate-in zoom-in-95 duration-300 overflow-hidden`}>
+      <div className={`w-full ${sizes[size]} mx-4 bg-background border border-white/5 rounded-3xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] animate-in zoom-in-95 duration-300 overflow-hidden flex flex-col max-h-[90vh]`}>
         {(title || showCloseButton) && (
-          <div className="flex items-center justify-between px-8 py-6 border-b border-white/5 bg-white/[0.02]">
+          <div className="flex items-center justify-between px-8 py-6 border-b border-white/5 bg-white/[0.02] shrink-0">
             {title ? <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3> : <div />}
             {showCloseButton && (
               <button
@@ -66,7 +66,7 @@ export function Modal({ show, onClose, title, children, size = 'md', showCloseBu
             )}
           </div>
         )}
-        <div className="p-8">
+        <div className="p-8 overflow-y-auto">
           {children}
         </div>
       </div>

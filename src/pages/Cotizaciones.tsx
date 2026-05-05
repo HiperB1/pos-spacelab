@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion } from '../lib/database';
+import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getProdutos, getCombos } from '../lib/database';
 import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult } from '../lib/envio';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
@@ -17,7 +17,9 @@ import {
   XCircle,
   Trash2,
   Truck,
-  Loader2
+  Loader2,
+  Package,
+  PackagePlus
 } from 'lucide-react';
 
 interface Cotizacion {
@@ -35,6 +37,10 @@ interface Cotizacion {
 }
 
 interface ItemCotizacion {
+  tipo_item: 'inventario' | 'manual';
+  origen: 'produto' | 'combo';
+  produto_id?: string;
+  combo_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -43,6 +49,8 @@ interface ItemCotizacion {
 export function Cotizaciones() {
   const [cotizaciones, setCotizaciones] = useState<any[]>([]);
   const [dbClientes, setDbClientes] = useState<any[]>([]);
+  const [productos, setProductos] = useState<any[]>([]);
+  const [combos, setCombos] = useState<any[]>([]);
   const [showNueva, setShowNueva] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
@@ -58,7 +66,7 @@ export function Cotizaciones() {
   const [notas, setNotas] = useState('');
   const [descuento, setDescuento] = useState(0);
   const [validezDias, setValidezDias] = useState(15);
-  const [items, setItems] = useState<ItemCotizacion[]>([{ descripcion: '', quantidade: 1, precio: 0 }]);
+  const [items, setItems] = useState<ItemCotizacion[]>([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
   
   const [ciudadDestino, setCiudadDestino] = useState('');
   const [subdivisionDestino, setSubdivisionDestino] = useState('');
@@ -85,6 +93,8 @@ export function Cotizaciones() {
   function loadData() {
     setCotizaciones(getCotizaciones());
     setDbClientes(getClientes());
+    setProductos(getProdutos());
+    setCombos(getCombos());
   }
 
   const facturasFiltradas = useMemo(() => {
@@ -125,7 +135,7 @@ export function Cotizaciones() {
   }
 
   function addItem() {
-    setItems([...items, { descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([...items, { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -137,6 +147,31 @@ export function Cotizaciones() {
   function updateItem(index: number, field: keyof ItemCotizacion, value: any) {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
+    setItems(newItems);
+  }
+
+  function handleSelectProducto(index: number, tipo: 'inventario' | 'manual', origen?: 'produto' | 'combo', id?: string) {
+    const newItems = [...items];
+    newItems[index].tipo_item = tipo;
+    newItems[index].origen = tipo === 'inventario' ? (origen || 'produto') : 'produto';
+    newItems[index].produto_id = undefined;
+    newItems[index].combo_id = undefined;
+    newItems[index].descripcion = '';
+    newItems[index].precio = 0;
+
+    if (tipo === 'inventario' && id) {
+      if (origen === 'combo') {
+        const combo = combos.find(c => c.id === id);
+        newItems[index].combo_id = id;
+        newItems[index].descripcion = combo ? `COMBO: ${combo.nome}` : '';
+        newItems[index].precio = combo?.preco || 0;
+      } else {
+        const prod = productos.find(p => p.id === id);
+        newItems[index].produto_id = id;
+        newItems[index].descripcion = prod?.nome || '';
+        newItems[index].precio = prod?.preco || 0;
+      }
+    }
     setItems(newItems);
   }
 
@@ -186,17 +221,26 @@ export function Cotizaciones() {
       toast.error('Debe agregar al menos un ítem válido');
       return;
     }
-    
+
     const tieneCliente = formData.cliente_id || formData.cliente_nome;
     if (!tieneCliente && !ciudadDestino) {
       toast.error('Debe seleccionar un cliente o ingresar una ciudad de destino');
       return;
     }
 
+    const itemsParaGuardar = validItems.map(item => ({
+      tipo_item: item.tipo_item === 'inventario' ? item.origen : 'manual',
+      produto_id: item.produto_id,
+      combo_id: item.combo_id,
+      descripcion: item.descripcion,
+      quantidade: item.quantidade,
+      precio: item.precio
+    }));
+
     try {
       const c = createCotizacion({
         ...formData,
-        items: validItems,
+        items: itemsParaGuardar,
         notas,
         descuento,
         validez_dias: validezDias,
@@ -217,7 +261,7 @@ export function Cotizaciones() {
     setNotas('');
     setDescuento(0);
     setValidezDias(15);
-    setItems([{ descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
     setCiudadDestino('');
     setSubdivisionDestino('');
     setPesoKg(0.5);
@@ -526,7 +570,86 @@ export function Cotizaciones() {
                 <tbody className="divide-y divide-white/5">
                   {items.map((item, idx) => (
                     <tr key={idx}>
-                      <td className="p-2"><input className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.descripcion} onChange={e => updateItem(idx, 'descripcion', e.target.value)} /></td>
+                      <td className="p-3 space-y-2">
+                        <select
+                          value={item.tipo_item}
+                          onChange={e => handleSelectProducto(idx, e.target.value as 'inventario' | 'manual')}
+                          className="w-full border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none"
+                        >
+                          <option value="manual">✏️ Escribir manualmente</option>
+                          <option value="inventario">📦 Del inventario</option>
+                        </select>
+
+                        {item.tipo_item === 'manual' ? (
+                          <input
+                            className="w-full bg-transparent border-b border-white/10 focus:border-primary/50 py-1 text-white text-sm"
+                            placeholder="Descripción del producto o servicio"
+                            value={item.descripcion}
+                            onChange={e => updateItem(idx, 'descripcion', e.target.value)}
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const prod = productos[0];
+                                  if (prod) handleSelectProducto(idx, 'inventario', 'produto', prod.id);
+                                }}
+                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${item.origen === 'produto' ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                              >
+                                <Package className="w-3 h-3 inline mr-1" /> Productos
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cb = combos[0];
+                                  if (cb) handleSelectProducto(idx, 'inventario', 'combo', cb.id);
+                                }}
+                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${item.origen === 'combo' ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                              >
+                                <PackagePlus className="w-3 h-3 inline mr-1" /> Combos
+                              </button>
+                            </div>
+
+                            {item.origen === 'produto' && (
+                              <select
+                                value={item.produto_id || ''}
+                                onChange={e => handleSelectProducto(idx, 'inventario', 'produto', e.target.value)}
+                                className="w-full border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none"
+                              >
+                                <option value="">Seleccionar producto...</option>
+                                {productos.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nome} - {formatCurrency(p.preco)} {p.quantidade_stock !== undefined ? `(Stock: ${p.quantidade_stock})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
+                            {item.origen === 'combo' && (
+                              <select
+                                value={item.combo_id || ''}
+                                onChange={e => handleSelectProducto(idx, 'inventario', 'combo', e.target.value)}
+                                className="w-full border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none"
+                              >
+                                <option value="">Seleccionar combo...</option>
+                                {combos.filter(c => c.activo).map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nome} ({c.productos.length} productos) - {formatCurrency(c.preco)} (Stock: {c.quantidade_stock})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+
+                            {item.descripcion && (
+                              <div className="text-xs text-white/60 bg-white/5 px-3 py-2 rounded-lg">
+                                {item.descripcion}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white text-center" value={item.quantidade} onChange={e => updateItem(idx, 'quantidade', parseInt(e.target.value) || 0)} /></td>
                       <td className="p-2"><input type="number" className="w-full bg-transparent border-none focus:ring-0 text-white" value={item.precio} onChange={e => updateItem(idx, 'precio', parseFloat(e.target.value) || 0)} /></td>
                       <td className="px-4 py-2 text-right font-mono text-white">{formatCurrency(item.quantidade * item.precio)}</td>

@@ -1,4 +1,4 @@
-import type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem } from './types';
+import type { Cliente, MateriaPrima, Subproducto, Produto, Combo, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem } from './types';
 
 type DataStore = {
   configuracion: Configuracion;
@@ -7,6 +7,7 @@ type DataStore = {
   subproductos: Subproducto[];
   productos: Produto[];
   producto_componentes: { id: string; produto_id: string; subproduto_id: string; quantidade_necesaria: number }[];
+  combos: Combo[];
   facturas: Factura[];
   factura_items: FacturaItem[];
   domiciliarios: Domiciliario[];
@@ -35,6 +36,7 @@ const defaultData: DataStore = {
   subproductos: [],
   productos: [],
   producto_componentes: [],
+  combos: [],
   facturas: [],
   factura_items: [],
   domiciliarios: [],
@@ -187,6 +189,47 @@ export function deleteProductRow(id: string): void {
   save();
 }
 
+export function getCombos(includeInactive = false): Combo[] {
+  if (includeInactive) return store.combos;
+  return store.combos.filter(c => c.activo);
+}
+
+export function getCombo(id: string): Combo | undefined {
+  return store.combos.find(c => c.id === id);
+}
+
+export function addCombo(data: Omit<Combo, 'id' | 'created_at'>): Combo {
+  const id = crypto.randomUUID();
+  const item: Combo = { ...data, id, created_at: new Date().toISOString() };
+  store.combos.push(item);
+  save();
+  return item;
+}
+
+export function updateCombo(id: string, data: Partial<Combo>): void {
+  const idx = store.combos.findIndex(c => c.id === id);
+  if (idx >= 0) {
+    store.combos[idx] = { ...store.combos[idx], ...data };
+    save();
+  }
+}
+
+export function deleteCombo(id: string): void {
+  const idx = store.combos.findIndex(c => c.id === id);
+  if (idx >= 0) {
+    store.combos[idx].activo = false;
+    save();
+  }
+}
+
+export function adjustComboStock(id: string, cantidad: number): void {
+  const idx = store.combos.findIndex(c => c.id === id);
+  if (idx >= 0) {
+    store.combos[idx].quantidade_stock = Math.max(0, store.combos[idx].quantidade_stock + cantidad);
+    save();
+  }
+}
+
 export function getComponentes(produtoId: string): any[] {
   return store.producto_componentes
     .filter(c => c.produto_id === produtoId)
@@ -325,6 +368,9 @@ export function createFactura(data: any): any {
   const items: FacturaItem[] = data.items.map((i: any) => ({
     id: crypto.randomUUID(),
     factura_id: id,
+    tipo_item: i.tipo_item || 'manual',
+    produto_id: i.produto_id,
+    combo_id: i.combo_id,
     descripcion: i.descripcion,
     quantidade: i.quantidade,
     precio: i.precio,
@@ -332,6 +378,20 @@ export function createFactura(data: any): any {
   }));
   
   store.factura_items.push(...items);
+
+  for (const item of data.items) {
+    if (item.tipo_item === 'produto' && item.produto_id) {
+      adjustProdutoStock(item.produto_id, -item.quantidade);
+    } else if (item.tipo_item === 'combo' && item.combo_id) {
+      const combo = getCombo(item.combo_id);
+      if (combo) {
+        adjustComboStock(item.combo_id, -item.quantidade);
+        for (const cp of combo.productos) {
+          adjustProdutoStock(cp.produto_id, -(cp.quantidade * item.quantidade));
+        }
+      }
+    }
+  }
   
   store.configuracion.siguiente_numero++;
   save();
@@ -342,6 +402,22 @@ export function createFactura(data: any): any {
 export function anularFactura(id: string, motivo: string): void {
   const idx = store.facturas.findIndex(f => f.id === id);
   if (idx >= 0) {
+    const items = store.factura_items.filter(i => i.factura_id === id);
+    
+    for (const item of items) {
+      if (item.tipo_item === 'produto' && item.produto_id) {
+        adjustProdutoStock(item.produto_id, item.quantidade);
+      } else if (item.tipo_item === 'combo' && item.combo_id) {
+        const combo = getCombo(item.combo_id);
+        if (combo) {
+          adjustComboStock(item.combo_id, item.quantidade);
+          for (const cp of combo.productos) {
+            adjustProdutoStock(cp.produto_id, cp.quantidade * item.quantidade);
+          }
+        }
+      }
+    }
+
     store.facturas[idx] = {
       ...store.facturas[idx],
       estado: 'anulada',
