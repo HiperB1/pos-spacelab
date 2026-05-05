@@ -54,7 +54,7 @@ jobs:
         with:
           tagName: app-v__VERSION__
           releaseName: 'My Space v__VERSION__'
-          releaseBody: 'Nueva versión de My Space'
+          releaseBody: 'Nueva versión de My Space - Auto-update habilitado'
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
