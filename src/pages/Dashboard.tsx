@@ -106,22 +106,6 @@ export function Dashboard() {
     }));
   }, [data]);
 
-  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const topDias = useMemo(() => {
-    const ventasPorDia: Record<string, number> = {};
-    data.facturas.forEach(f => {
-      if (f.estado === 'activa' && f.fecha) {
-        const d = new Date(f.fecha);
-        if (isNaN(d.getTime())) return;
-        const key = `${String(d.getDate()).padStart(2,'0')} ${MESES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
-        ventasPorDia[key] = (ventasPorDia[key] || 0) + f.total;
-      }
-    });
-    return Object.entries(ventasPorDia)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([fecha, total]) => ({ fecha, total }));
-  }, [data]);
 
   const analisisABC = useMemo(() => {
     const ventasPorProducto: Record<string, number> = {};
@@ -347,27 +331,29 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card header="Top día de más ventas">
-          <div className="mt-4 space-y-3">
-            {topDias.length > 0 ? topDias.map((dia, idx) => {
-              const pct = Math.round((dia.total / topDias[0].total) * 100);
-              return (
-                <div key={idx} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white/30 font-mono w-4">#{idx + 1}</span>
-                      <span className="text-white/70">{dia.fecha}</span>
-                    </div>
-                    <span className="text-white font-mono text-xs">{formatCurrency(dia.total)}</span>
+        <Card header="Top Productos">
+          <div className="h-[300px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={topProducts} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value">
+                  {topProducts.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-2 mt-4">
+              {topProducts.map((p, idx) => (
+                <div key={idx} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                    <span className="text-white/60">{p.name}</span>
                   </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
-                  </div>
+                  <span className="text-white font-mono">{p.value}</span>
                 </div>
-              );
-            }) : (
-              <p className="text-white/20 text-sm text-center py-8">Sin datos de ventas</p>
-            )}
+              ))}
+            </div>
           </div>
         </Card>
       </div>
