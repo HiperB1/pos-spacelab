@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
+  AreaChart, Area, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   Package, Users, DollarSign, TrendingUp,
@@ -18,6 +18,11 @@ interface MonthlyData {
   total: number;
 }
 
+interface TopProduct {
+  name: string;
+  value: number;
+  color: string;
+}
 
 interface StockAlert {
   id: string;
@@ -80,8 +85,29 @@ export function Dashboard() {
     });
   }, [data]);
 
+  const topProducts: TopProduct[] = useMemo(() => {
+    const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#f97316'];
+    const ventasPorProducto: Record<string, number> = {};
+    data.facturas.forEach(f => {
+      if (f.estado === 'activa' && f.items) {
+        f.items.forEach((item: any) => {
+          const key = item.descripcion;
+          ventasPorProducto[key] = (ventasPorProducto[key] || 0) + item.quantidade;
+        });
+      }
+    });
+    const ordenado = Object.entries(ventasPorProducto)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    return ordenado.map(([nome, value], idx) => ({
+      name: nome,
+      value,
+      color: COLORS[idx % COLORS.length]
+    }));
+  }, [data]);
+
+  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const topDias = useMemo(() => {
-    const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     const ventasPorDia: Record<string, number> = {};
     data.facturas.forEach(f => {
       if (f.estado === 'activa' && f.fecha) {
@@ -322,22 +348,25 @@ export function Dashboard() {
         </Card>
 
         <Card header="Top día de más ventas">
-          <div className="h-[300px] w-full mt-4">
-            {topDias.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topDias} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
-                  <XAxis dataKey="fecha" tick={{ fill: '#ffffff60', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#ffffff60', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px', color: '#fff' }}
-                    formatter={(v: unknown) => formatCurrency(v as number)}
-                  />
-                  <Bar dataKey="total" fill="#6366f1" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-white/20 text-sm">Sin datos de ventas</div>
+          <div className="mt-4 space-y-3">
+            {topDias.length > 0 ? topDias.map((dia, idx) => {
+              const pct = Math.round((dia.total / topDias[0].total) * 100);
+              return (
+                <div key={idx} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/30 font-mono w-4">#{idx + 1}</span>
+                      <span className="text-white/70">{dia.fecha}</span>
+                    </div>
+                    <span className="text-white font-mono text-xs">{formatCurrency(dia.total)}</span>
+                  </div>
+                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            }) : (
+              <p className="text-white/20 text-sm text-center py-8">Sin datos de ventas</p>
             )}
           </div>
         </Card>
