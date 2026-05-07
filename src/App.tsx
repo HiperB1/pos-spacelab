@@ -19,17 +19,20 @@ import { KeyboardShortcutsGuide } from './components/ui/KeyboardShortcuts';
 import './components/styles.css';
 
 function AppContent() {
+  console.log('[APP] Starting AppContent');
   const { activeTab, setActiveTab } = useNavigation();
   const [loading, setLoading] = useState(true);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
+    console.log('[APP] Initializing database...');
     async function init() {
       try {
         await initDatabase();
+        console.log('[APP] Database initialized');
       } catch (e) {
-        console.error('Error initializing database:', e);
+        console.error('[APP] Error initializing database:', e);
       } finally {
         setLoading(false);
       }
