@@ -1,7 +1,7 @@
 # AGENTS.md - dg-facturacion
 
 > **Sistema de Facturación e Inventario para MySpace**  
-> Version: 0.1.0 | Last Updated: 2026-04-28
+> Version: 0.1.16 | Last Updated: 2026-04-28
 
 ---
 
