@@ -1,11 +1,11 @@
 import { ReactNode, useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Package, 
-  Layers, 
-  Users, 
-  FileText, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Package,
+  Layers,
+  Users,
+  FileText,
+  Settings,
   Menu,
   X,
   ChevronLeft,
@@ -30,7 +30,6 @@ const tabs = [
   { id: 'pedidos', label: 'Pedidos', icon: Truck },
   { id: 'cotizaciones', label: 'Cotizaciones', icon: Quote },
   { id: 'notas_credito', label: 'Notas Crédito', icon: Receipt },
-  { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'facturas', label: 'Facturas', icon: FileText },
   { id: 'reportes', label: 'Contabilidad', icon: BarChart3 },
   { id: 'historial', label: 'Historial', icon: History },
@@ -45,7 +44,7 @@ export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: La
     <div className="flex h-screen bg-background">
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
@@ -93,8 +92,8 @@ export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: La
                 className={`
                   relative w-full flex items-center gap-3 px-4 py-3 rounded-xl
                   transition-all duration-300 group
-                  ${isActive 
-                    ? 'bg-primary/10 text-primary font-semibold' 
+                  ${isActive
+                    ? 'bg-primary/10 text-primary font-semibold'
                     : 'text-text-secondary hover:text-white hover:bg-white/5'
                   }
                 `}
@@ -104,7 +103,7 @@ export function Layout({ children, activeTab, onTabChange, onShowShortcuts }: La
                 {isActive && (
                   <div className="absolute left-0 w-1 h-6 bg-primary rounded-r-full" />
                 )}
-                
+
                 <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${isActive ? 'text-primary' : 'group-hover:text-white'}`} />
                 {!collapsed && (
                   <span className="truncate">{tab.label}</span>

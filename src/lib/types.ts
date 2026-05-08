@@ -67,6 +67,15 @@ export interface Domiciliario {
   activo: boolean;
 }
 
+export interface Abono {
+  id: string;
+  domiciliario_id: string;
+  monto: number;
+  fecha: string;
+  nota?: string;
+  comprobante?: string;
+}
+
 export interface Factura {
   id: string;
   numero: string;
@@ -99,6 +108,7 @@ export interface Factura {
   domiciliario_nome?: string;
   fecha_despacho?: string;
   fecha_entrega?: string;
+  pagada?: boolean;
 }
 
 export interface FacturaItem {
