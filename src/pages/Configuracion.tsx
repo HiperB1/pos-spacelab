@@ -5,6 +5,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { check, Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
@@ -27,7 +29,6 @@ export function ConfiguracionPage() {
     setCheckingUpdate(true);
     setUpdateInfo(null);
     try {
-      const { check, Update } = await import('@tauri-apps/plugin-updater');
       const update = await check();
       if (update) {
         setUpdateInfo({ version: update.version, notes: update.body });
@@ -53,7 +54,6 @@ export function ConfiguracionPage() {
           localStorage.setItem('dg_last_update', new Date().toISOString());
           setLastUpdate(new Date().toLocaleDateString('es-CO'));
           toast.success('Actualización instalada. Reiniciando...');
-          const { relaunch } = await import('@tauri-apps/plugin-process');
           await relaunch();
         }
       } else {
