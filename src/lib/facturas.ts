@@ -41,5 +41,3 @@ export function anularFactura(id: string, motivo: string): void {
 export function getSiguienteNumero(): string {
   return db.getSiguienteNumero();
 }
-
-export { getAllClientes } from './clientes';
