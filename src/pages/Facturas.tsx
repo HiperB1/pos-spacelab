@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getAllFacturas, getAllClientes, createFactura, getSiguienteNumero, anularFactura } from '../lib/facturas';
-import { getProdutos, getCombos } from '../lib/database';
+import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura } from '../lib/facturas';
+import { getProdutos, getCombos, getClientes } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
 import { exportToExcel, exportToCSV } from '../lib/export';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
@@ -88,7 +88,7 @@ export function Facturas() {
 
   function loadData() {
     setFacturas(getAllFacturas());
-    setDbClientes(getAllClientes());
+    setDbClientes(getClientes());
     setProductos(getProdutos());
     setCombos(getCombos());
   }
