@@ -529,3 +529,26 @@ export function NewComponent({ className }: Props) {
 | `tailwind.config.js` | Theme colors & configuration |
 | `src-tauri/tauri.conf.json` | Desktop window & bundle settings |
 | `vite.config.ts` | Vite & Tauri port configuration |
+
+---
+
+## Versionado
+
+### Reglas para push a main
+
+1. **Verificar versión antes de push**: Antes de hacer `git push origin main`, siempre verificar que se haya aumentado la versión en:
+   - `package.json`
+   - `src-tauri/tauri.conf.json`
+
+2. **Progresión de versiones**:
+   - Las versiones siguen el formato `0.1.X` hasta alcanzar `0.1.30`
+   - La versión `0.1.30` será seguida por `0.2.0` (首个 major release)
+   - A partir de `0.2.0`, seguir semantic versioning (0.2.1, 0.2.2, ..., 0.3.0, etc.)
+
+3. **Flujo correcto para push**:
+   ```bash
+   # 1. Hacer cambios y commits
+   # 2. Verificar que package.json y tauri.conf.json tengan la nueva versión
+   # 3. git add -A && git commit -m "mensaje"
+   # 4. git push origin main
+   ```
