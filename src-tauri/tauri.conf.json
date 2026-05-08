@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-"productName": "Space Lab",
-  "version": "0.1.16",
+  "productName": "Space Lab",
+  "version": "0.1.17",
   "identifier": "com.spacelab.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -45,12 +45,10 @@
   },
   "plugins": {
     "updater": {
-      "active": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVGMzVBRTY3Q0Q4RDlEN0QKUldSOW5ZM05aNjQxWHhtY1JNVC9GaTAxOHFtVHR0Nnd5bndXTVpEN1ZZU1dDS0EvT2xNY0gvNUgK",
       "endpoints": [
         "https://github.com/HiperB1/pos-spacelab/releases/latest/download/latest.json"
-      ],
-      "dialog": true
+      ]
     }
   }
 }

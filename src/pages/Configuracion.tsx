@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock } from 'lucide-react';
+import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function ConfiguracionPage() {
@@ -13,6 +11,9 @@ export function ConfiguracionPage() {
   const [saved, setSaved] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0 });
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; notes?: string } | null>(null);
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setAppVersion).catch(() => {});
@@ -22,17 +23,37 @@ export function ConfiguracionPage() {
     return stored ? new Date(stored).toLocaleDateString('es-CO') : null;
   });
 
-async function handleCheckUpdate() {
+  async function handleCheckUpdate() {
     setCheckingUpdate(true);
+    setUpdateInfo(null);
     try {
+      const { check, Update } = await import('@tauri-apps/plugin-updater');
       const update = await check();
       if (update) {
-        toast.success(`Nueva versión ${update.version} disponible`);
-        if (confirm(`¿Descargar e instalar versión ${update.version}?`)) {
-          await update.downloadAndInstall();
+        setUpdateInfo({ version: update.version, notes: update.body });
+        if (confirm(`Nueva versión ${update.version} disponible. ¿Descargar e instalar?`)) {
+          setDownloadingUpdate(true);
+          setDownloadProgress({ downloaded: 0, total: 0 });
+          await update.downloadAndInstall((event) => {
+            switch (event.event) {
+              case 'Started':
+                setDownloadProgress({ downloaded: 0, total: event.data?.contentLength || 0 });
+                break;
+              case 'Progress':
+                setDownloadProgress(prev => ({
+                  downloaded: prev.downloaded + (event.data?.chunkLength || 0),
+                  total: prev.total
+                }));
+                break;
+              case 'Finished':
+                toast.success('Descarga completada. Instalando...');
+                break;
+            }
+          });
           localStorage.setItem('dg_last_update', new Date().toISOString());
           setLastUpdate(new Date().toLocaleDateString('es-CO'));
           toast.success('Actualización instalada. Reiniciando...');
+          const { relaunch } = await import('@tauri-apps/plugin-process');
           await relaunch();
         }
       } else {
@@ -42,12 +63,19 @@ async function handleCheckUpdate() {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('Update check failed:', msg);
       if (msg.toLowerCase().includes('appimage') || msg.toLowerCase().includes('unsupported')) {
-        toast.error('Auto-actualización no disponible en esta instalación. Usa el AppImage para actualizaciones automáticas.', { duration: 8000 });
+        toast.error('Auto-actualización no disponible en AppImage. Descarga una nueva versión manualmente.', { duration: 8000 });
+      } else if (msg.toLowerCase().includes('signature') || msg.toLowerCase().includes('verify')) {
+        toast.error('Error de firma: La actualización no puede ser verificada. Contacta al desarrollador.', { duration: 8000 });
+      } else if (msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('ssl')) {
+        toast.error('Error de conexión: Verifica tu internet e intenta de nuevo.', { duration: 6000 });
+      } else if (msg.toLowerCase().includes('404') || msg.toLowerCase().includes('not found')) {
+        toast.error('Actualización no disponible para esta plataforma.', { duration: 6000 });
       } else {
-        toast.error(`Error al buscar actualizaciones: ${msg}`, { duration: 6000 });
+        toast.error(`Error: ${msg}`, { duration: 6000 });
       }
     } finally {
       setCheckingUpdate(false);
+      setDownloadingUpdate(false);
     }
   }
 
@@ -258,7 +286,7 @@ async function handleCheckUpdate() {
             <div className="card-body space-y-4">
               <div className="bg-surface p-4 rounded-xl border border-white/10">
                 <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Versión Actual</p>
-                <p className="text-2xl font-bold text-white">{appVersion}</p>
+                <p className="text-2xl font-bold text-white">{appVersion || '...'}</p>
               </div>
               
               <div className="bg-surface p-4 rounded-xl border border-white/10">
@@ -269,15 +297,77 @@ async function handleCheckUpdate() {
                 </div>
               </div>
 
-              <Button 
-                variant="primary" 
-                className="w-full gap-2" 
-                onClick={handleCheckUpdate}
-                loading={checkingUpdate}
-              >
-                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
-                Buscar Actualización
-              </Button>
+              {updateInfo && (
+                <div className="bg-primary/10 p-4 rounded-xl border border-primary/30">
+                  <div className="flex items-center gap-2 text-primary mb-2">
+                    <Zap className="w-4 h-4" />
+                    <span className="font-medium">Nueva versión: {updateInfo.version}</span>
+                  </div>
+                  {updateInfo.notes && (
+                    <p className="text-xs text-text-secondary">{updateInfo.notes}</p>
+                  )}
+                </div>
+              )}
+
+              {downloadingUpdate && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">Descargando...</span>
+                    <span className="text-white">
+                      {downloadProgress.total > 0 
+                        ? `${(downloadProgress.downloaded / 1024 / 1024).toFixed(1)} / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB`
+                        : 'Calculando...'}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-surface rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ 
+                        width: downloadProgress.total > 0 
+                          ? `${(downloadProgress.downloaded / downloadProgress.total) * 100}%` 
+                          : '0%' 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button 
+                  variant="primary" 
+                  className="flex-1 gap-2" 
+                  onClick={handleCheckUpdate}
+                  loading={checkingUpdate}
+                  disabled={downloadingUpdate}
+                >
+                  {checkingUpdate ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Buscando...
+                    </>
+                  ) : updateInfo ? (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      Descargar {updateInfo.version}
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Buscar Actualización
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {downloadingUpdate && (
+                <Button 
+                  variant="ghost" 
+                  className="w-full"
+                  onClick={() => setDownloadingUpdate(false)}
+                >
+                  Cancelar
+                </Button>
+              )}
 
               <a 
                 href="https://github.com/HiperB1/pos-spacelab/releases" 
