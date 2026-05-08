@@ -16,6 +16,7 @@ export function ConfiguracionPage() {
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0 });
   const [updateInfo, setUpdateInfo] = useState<{ version: string; notes?: string } | null>(null);
+  const [updateObj, setUpdateObj] = useState<Update | null>(null);
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setAppVersion).catch(() => {});
@@ -31,6 +32,7 @@ export function ConfiguracionPage() {
     try {
       const update = await check();
       if (update) {
+        setUpdateObj(update);
         setUpdateInfo({ version: update.version, notes: update.body });
         if (confirm(`Nueva versión ${update.version} disponible. ¿Descargar e instalar?`)) {
           setDownloadingUpdate(true);
@@ -75,6 +77,50 @@ export function ConfiguracionPage() {
       }
     } finally {
       setCheckingUpdate(false);
+      setDownloadingUpdate(false);
+    }
+  }
+
+  async function handleDownloadUpdate() {
+    if (!updateObj) return;
+    setDownloadingUpdate(true);
+    setDownloadProgress({ downloaded: 0, total: 0 });
+    try {
+      await updateObj.downloadAndInstall((event) => {
+        switch (event.event) {
+          case 'Started':
+            setDownloadProgress({ downloaded: 0, total: event.data?.contentLength || 0 });
+            break;
+          case 'Progress':
+            setDownloadProgress(prev => ({
+              downloaded: prev.downloaded + (event.data?.chunkLength || 0),
+              total: prev.total
+            }));
+            break;
+          case 'Finished':
+            toast.success('Descarga completada. Instalando...');
+            break;
+        }
+      });
+      localStorage.setItem('dg_last_update', new Date().toISOString());
+      setLastUpdate(new Date().toLocaleDateString('es-CO'));
+      setUpdateInfo(null);
+      setUpdateObj(null);
+      toast.success('Actualización instalada. Reiniciando...');
+      await relaunch();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('Download failed:', msg);
+      if (msg.toLowerCase().includes('signature') || msg.toLowerCase().includes('verify')) {
+        toast.error('Error de firma: La actualización no puede ser verificada. Contacta al desarrollador.', { duration: 8000 });
+      } else if (msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('ssl')) {
+        toast.error('Error de conexión: Verifica tu internet e intenta de nuevo.', { duration: 6000 });
+      } else if (msg.toLowerCase().includes('cancelled') || msg.toLowerCase().includes('cancel')) {
+        toast.info('Descarga cancelada');
+      } else {
+        toast.error(`Error al descargar: ${msg}`, { duration: 6000 });
+      }
+    } finally {
       setDownloadingUpdate(false);
     }
   }
@@ -336,7 +382,7 @@ export function ConfiguracionPage() {
                 <Button 
                   variant="primary" 
                   className="flex-1 gap-2" 
-                  onClick={handleCheckUpdate}
+                  onClick={updateInfo ? handleDownloadUpdate : handleCheckUpdate}
                   loading={checkingUpdate}
                   disabled={downloadingUpdate}
                 >
