@@ -29,34 +29,14 @@ export function ConfiguracionPage() {
   async function handleCheckUpdate() {
     setCheckingUpdate(true);
     setUpdateInfo(null);
+    setUpdateObj(null);
     try {
       const update = await check();
       if (update) {
         setUpdateObj(update);
         setUpdateInfo({ version: update.version, notes: update.body });
         if (confirm(`Nueva versión ${update.version} disponible. ¿Descargar e instalar?`)) {
-          setDownloadingUpdate(true);
-          setDownloadProgress({ downloaded: 0, total: 0 });
-          await update.downloadAndInstall((event) => {
-            switch (event.event) {
-              case 'Started':
-                setDownloadProgress({ downloaded: 0, total: event.data?.contentLength || 0 });
-                break;
-              case 'Progress':
-                setDownloadProgress(prev => ({
-                  downloaded: prev.downloaded + (event.data?.chunkLength || 0),
-                  total: prev.total
-                }));
-                break;
-              case 'Finished':
-                toast.success('Descarga completada. Instalando...');
-                break;
-            }
-          });
-          localStorage.setItem('dg_last_update', new Date().toISOString());
-          setLastUpdate(new Date().toLocaleDateString('es-CO'));
-          toast.success('Actualización instalada. Reiniciando...');
-          await relaunch();
+          await handleDownloadUpdate();
         }
       } else {
         toast.info('Ya tienes la última versión instalada');
@@ -82,18 +62,26 @@ export function ConfiguracionPage() {
   }
 
   async function handleDownloadUpdate() {
-    if (!updateObj) return;
+    console.log('handleDownloadUpdate called', { updateObj, updateInfo });
+    if (!updateObj) {
+      console.error('updateObj is null, cannot download');
+      toast.error('Error: No hay actualización disponible. Busca nuevamente.');
+      return;
+    }
     setDownloadingUpdate(true);
     setDownloadProgress({ downloaded: 0, total: 0 });
+    console.log('Starting download for version:', updateObj.version);
     try {
       await updateObj.downloadAndInstall((event) => {
+        const data = 'data' in event ? event.data as { contentLength?: number; chunkLength?: number } : undefined;
+        console.log('Download event:', event.event, data);
         switch (event.event) {
           case 'Started':
-            setDownloadProgress({ downloaded: 0, total: event.data?.contentLength || 0 });
+            setDownloadProgress({ downloaded: 0, total: data?.contentLength || 0 });
             break;
           case 'Progress':
             setDownloadProgress(prev => ({
-              downloaded: prev.downloaded + (event.data?.chunkLength || 0),
+              downloaded: prev.downloaded + (data?.chunkLength || 0),
               total: prev.total
             }));
             break;
@@ -117,6 +105,8 @@ export function ConfiguracionPage() {
         toast.error('Error de conexión: Verifica tu internet e intenta de nuevo.', { duration: 6000 });
       } else if (msg.toLowerCase().includes('cancelled') || msg.toLowerCase().includes('cancel')) {
         toast.info('Descarga cancelada');
+      } else if (msg.toLowerCase().includes('darwin') || msg.toLowerCase().includes('macos')) {
+        toast.error('Error en macOS: Verifica que tengas permisos de descarga.', { duration: 8000 });
       } else {
         toast.error(`Error al descargar: ${msg}`, { duration: 6000 });
       }
