@@ -3,7 +3,6 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Inventario } from './pages/Inventario';
 import { Disponibilidad } from './pages/Disponibilidad';
-import { Clientes } from './pages/Clientes';
 import { Facturas } from './pages/Facturas';
 import { Pedidos } from './pages/Pedidos';
 import { Reportes } from './pages/Reportes';
@@ -83,7 +82,6 @@ function AppContent() {
         {activeTab === 'disponibilidad' && <Disponibilidad />}
         {activeTab === 'cotizaciones' && <Cotizaciones />}
         {activeTab === 'notas_credito' && <NotasCredito />}
-        {activeTab === 'clientes' && <Clientes />}
         {activeTab === 'pedidos' && <Pedidos />}
         {activeTab === 'facturas' && <Facturas />}
         {activeTab === 'reportes' && <Reportes />}
