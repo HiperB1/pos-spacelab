@@ -451,7 +451,6 @@ export function Facturas() {
                           value={item.tipo_item}
                           onChange={e => handleSelectProducto(idx, e.target.value as 'inventario' | 'manual')}
                           className="w-full border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none"
-                          style={{ backgroundColor: '#0000', color: '#000' }}
                         >
                           <option value="manual">✏️ Escribir manualmente</option>
                           <option value="inventario">📦 Del inventario</option>

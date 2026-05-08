@@ -13,7 +13,6 @@ export function ConfiguracionPage() {
   const [saved, setSaved] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setAppVersion).catch(() => {});
@@ -30,23 +29,11 @@ async function handleCheckUpdate() {
       if (update) {
         toast.success(`Nueva versión ${update.version} disponible`);
         if (confirm(`¿Descargar e instalar versión ${update.version}?`)) {
-setIsDownloading(true);
-          try {
-            await update.downloadAndInstall((event: { event: string }) => {
-              if (event.event === 'Finished') {
-                setIsDownloading(false);
-              }
-            });
-            localStorage.setItem('dg_last_update', new Date().toISOString());
-            setLastUpdate(new Date().toLocaleDateString('es-CO'));
-            const { relaunch } = await import('@tauri-apps/plugin-process');
-            toast.success('Actualización instalada. Reiniciando...');
-            await relaunch();
-          } catch (downloadError) {
-            setIsDownloading(false);
-            const msg = downloadError instanceof Error ? downloadError.message : String(downloadError);
-            toast.error(`Error al descargar: ${msg}`, { duration: 6000 });
-          }
+          await update.downloadAndInstall();
+          localStorage.setItem('dg_last_update', new Date().toISOString());
+          setLastUpdate(new Date().toLocaleDateString('es-CO'));
+          toast.success('Actualización instalada. Reiniciando...');
+          await relaunch();
         }
       } else {
         toast.info('Ya tienes la última versión instalada');
@@ -286,20 +273,10 @@ setIsDownloading(true);
                 variant="primary" 
                 className="w-full gap-2" 
                 onClick={handleCheckUpdate}
-                loading={checkingUpdate || isDownloading}
-                disabled={isDownloading}
+                loading={checkingUpdate}
               >
-                {isDownloading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Descargando...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
-                    Buscar Actualización
-                  </>
-                )}
+                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                Buscar Actualización
               </Button>
 
               <a 
