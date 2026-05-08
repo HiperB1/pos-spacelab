@@ -302,3 +302,19 @@ textarea:focus {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+tbody tr td select,
+table tbody tr td select,
+table select {
+  background-color: #1a1a2e !important;
+  color: white !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+tbody tr td select option,
+table select option {
+  background-color: #1a1a2e !important;
+  color: white !important;
+}
