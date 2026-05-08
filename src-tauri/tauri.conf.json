@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "deb", "appimage"],
+    "targets": "all",
     "createUpdaterArtifacts": true,
     "linux": {
       "appimage": {
