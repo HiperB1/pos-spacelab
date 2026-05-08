@@ -547,6 +547,7 @@ export function actualizarEstadoEntrega(id: string, nuevoEstado: string): void {
 export function getSaldosDomiciliarios(): { domiciliario: Domiciliario; saldoPendiente: number; facturasPendientes: number }[] {
   const domiciliarios = store.domiciliarios || [];
   const facturas = store.facturas || [];
+  const abonos = store.abonos || [];
   
   return domiciliarios.filter(d => d.activo).map(domi => {
     const facturasDomi = facturas.filter(f => 
@@ -556,8 +557,8 @@ export function getSaldosDomiciliarios(): { domiciliario: Domiciliario; saldoPen
     );
     
     const totalFacturas = facturasDomi.reduce((sum, f) => sum + f.total, 0);
-    const totalPagado = facturasDomi.filter(f => f.pagada).reduce((sum, f) => sum + f.total, 0);
-    const saldoPendiente = totalFacturas - totalPagado;
+    const totalAbonos = abonos.filter(a => a.domiciliario_id === domi.id).reduce((sum, a) => sum + a.monto, 0);
+    const saldoPendiente = Math.max(0, totalFacturas - totalAbonos);
     
     return {
       domiciliario: domi,
