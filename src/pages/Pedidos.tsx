@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { getFacturas, getDomiciliarios, addDomiciliario, despacharFactura, deleteDomiciliario } from '../lib/database';
+import { getFacturas, getDomiciliarios, addDomiciliario, despacharFactura, deleteDomiciliario, getSaldosDomiciliarios, getFacturasDomiciliario, marcarFacturaPagada, addAbono, getAbonosDomiciliario } from '../lib/database';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -18,19 +18,32 @@ import {
   User,
   Search,
   MapPin,
-  Phone
+  Phone,
+  DollarSign,
+  Wallet,
+  ImagePlus,
+  History
 } from 'lucide-react';
 
+const formatCurrency = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value);
+
 export function Pedidos() {
-  const [tab, setTab] = useState<'pendientes' | 'despachados'>('pendientes');
+  const [tab, setTab] = useState<'pendientes' | 'despachados' | 'saldos'>('pendientes');
   const [showDispatchModal, setShowDispatchModal] = useState<any>(null);
   const [showDomiManager, setShowDomiManager] = useState(false);
+  const [showAbonoModal, setShowAbonoModal] = useState<any>(null);
+  const [showComprobante, setShowComprobante] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [newDomi, setNewDomi] = useState({ nome: '', telefono: '', placa: '' });
   const [selectedDomiId, setSelectedDomiId] = useState('');
   const [search, setSearch] = useState('');
+  const [abonoData, setAbonoData] = useState({ monto: '', nota: '', comprobante: '' });
 
   const facturas = useMemo(() => getFacturas(), [showDispatchModal]);
   const domiciliarios = useMemo(() => getDomiciliarios(), [showDomiManager, showDispatchModal]);
+  const saldos = useMemo(() => getSaldosDomiciliarios(), [showDispatchModal, showAbonoModal, refreshTrigger]);
+  const facturasDomi = useMemo(() => showAbonoModal ? getFacturasDomiciliario(showAbonoModal.domiciliario.id) : [], [showAbonoModal, refreshTrigger]);
+  const abonosDomi = useMemo(() => showAbonoModal ? getAbonosDomiciliario(showAbonoModal.domiciliario.id) : [], [showAbonoModal, refreshTrigger]);
 
   const filtrados = useMemo(() => {
     return facturas.filter(f => {
@@ -144,6 +157,12 @@ export function Pedidos() {
           >
             <CheckCircle className="w-4 h-4" /> Despachados
           </button>
+          <button 
+            onClick={() => setTab('saldos')}
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'saldos' ? 'bg-amber-500 text-white' : 'text-white/40 hover:text-white'}`}
+          >
+            <Wallet className="w-4 h-4" /> Saldos
+          </button>
         </div>
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
@@ -157,15 +176,74 @@ export function Pedidos() {
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden">
-        <DataTable
-          data={filtrados}
-          columns={columns}
-          keyField="id"
-          paginated
-          pageSize={10}
-        />
-      </div>
+      {tab !== 'saldos' && (
+        <div className="card overflow-hidden">
+          <DataTable
+            data={filtrados}
+            columns={columns}
+            keyField="id"
+            paginated
+            pageSize={10}
+          />
+        </div>
+      )}
+
+      {/* Tab Saldos */}
+      {tab === 'saldos' && (
+        <div className="space-y-6">
+          {saldos.length === 0 ? (
+            <div className="text-center py-12 text-white/40 italic">
+              No hay mensajeros con saldo pendiente
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {saldos.map(({ domiciliario, saldoPendiente, facturasPendientes }) => (
+                <div 
+                  key={domiciliario.id} 
+                  className={`card p-6 border-2 transition-all hover:scale-[1.02] cursor-pointer ${saldoPendiente > 0 ? 'border-amber-500/30 hover:border-amber-500/60' : 'border-emerald-500/30 hover:border-emerald-500/60'}`}
+                  onClick={() => setShowAbonoModal({ domiciliario, saldoPendiente, facturasPendientes })}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${saldoPendiente > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                        {domiciliario.nome.charAt(0)}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-white text-lg">{domiciliario.nome}</h3>
+                        <p className="text-xs text-white/40 flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> {domiciliario.telefono}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      {saldoPendiente > 0 ? (
+                        <>
+                          <p className="text-xs text-white/40 uppercase tracking-wider">Saldo Pendiente</p>
+                          <p className="text-2xl font-bold text-amber-400">{formatCurrency(saldoPendiente)}</p>
+                          <p className="text-xs text-white/40 mt-1">{facturasPendientes} factura{facturasPendientes !== 1 ? 's' : ''} pendiente{facturasPendientes !== 1 ? 's' : ''}</p>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2 text-emerald-400">
+                          <CheckCircle className="w-5 h-5" />
+                          <span className="font-bold">Al día</span>
+                        </div>
+                      )}
+                    </div>
+                    {saldoPendiente > 0 && (
+                      <Button size="sm" variant="secondary">
+                        <DollarSign className="w-4 h-4 mr-1" /> Abonar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal Dispatch */}
       <Modal show={!!showDispatchModal} onClose={() => setShowDispatchModal(null)} title="Despachar Pedido" size="md">
@@ -263,6 +341,169 @@ export function Pedidos() {
               )}
             </div>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal Abonar */}
+      <Modal show={!!showAbonoModal} onClose={() => { setShowAbonoModal(null); setAbonoData({ monto: '', nota: '', comprobante: '' }); }} title={`Abono - ${showAbonoModal?.domiciliario?.nome}`} size="xl">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between bg-amber-500/10 p-4 rounded-2xl border border-amber-500/20">
+            <div>
+              <p className="text-xs text-amber-400 uppercase tracking-wider">Saldo Pendiente</p>
+              <p className="text-3xl font-bold text-white">{formatCurrency(showAbonoModal?.saldoPendiente || 0)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-white/40">{showAbonoModal?.facturasPendientes} factura{showAbonoModal?.facturasPendientes !== 1 ? 's' : ''} pendiente{showAbonoModal?.facturasPendientes !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Facturas del Mensajero */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                <Package className="w-4 h-4" /> Facturas Asignadas
+              </h4>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                {facturasDomi.map(f => (
+                  <div 
+                    key={f.id} 
+                    className={`p-4 rounded-2xl border transition-all ${f.pagada ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => { marcarFacturaPagada(f.id); setRefreshTrigger(prev => prev + 1); }}
+                          className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${f.pagada ? 'bg-emerald-500 border-emerald-500' : 'border-white/30 hover:border-emerald-400'}`}
+                        >
+                          {f.pagada && <CheckCircle className="w-4 h-4 text-white" />}
+                        </button>
+                        <div>
+                          <p className="font-bold text-white">{f.numero}</p>
+                          <p className="text-xs text-white/40">{f.cliente_nome}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${f.pagada ? 'text-emerald-400 line-through' : 'text-white'}`}>{formatCurrency(f.total)}</p>
+                        <p className="text-xs text-white/40">{new Date(f.fecha).toLocaleDateString('es-CO')}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {facturasDomi.length === 0 && (
+                  <div className="text-center py-8 text-white/20 italic">No hay facturas asignadas</div>
+                )}
+              </div>
+            </div>
+
+            {/* Historial de Abonos */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                <History className="w-4 h-4" /> Historial de Abonos
+              </h4>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 mb-4">
+                {abonosDomi.map(a => (
+                  <div key={a.id} className="p-3 bg-white/5 rounded-xl border border-white/5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-emerald-400">{formatCurrency(a.monto)}</p>
+                        <p className="text-xs text-white/40">{a.nota || 'Sin nota'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-white/40">{new Date(a.fecha).toLocaleDateString('es-CO')}</p>
+                        {a.comprobante && (
+                          <button 
+                            onClick={() => a.comprobante && setShowComprobante(a.comprobante)}
+                            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                          >
+                            <ImagePlus className="w-3 h-3" /> Ver comprobante
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {abonosDomi.length === 0 && (
+                  <div className="text-center py-4 text-white/20 italic text-sm">No hay abonos registrados</div>
+                )}
+              </div>
+
+              {/* Formulario Abono */}
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!abonoData.monto || parseFloat(abonoData.monto) <= 0) {
+                    toast.error('Ingresa un monto válido');
+                    return;
+                  }
+                  addAbono({
+                    domiciliario_id: showAbonoModal.domiciliario.id,
+                    monto: parseFloat(abonoData.monto),
+                    fecha: new Date().toISOString(),
+                    nota: abonoData.nota,
+                    comprobante: abonoData.comprobante
+                  });
+                  toast.success('Abono registrado');
+                  setAbonoData({ monto: '', nota: '', comprobante: '' });
+                }}
+                className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/5"
+              >
+                <p className="text-xs font-bold text-white/40 uppercase">Registrar Nuevo Abono</p>
+                <Input 
+                  label="Monto" 
+                  type="number" 
+                  value={abonoData.monto} 
+                  onChange={e => setAbonoData({...abonoData, monto: e.target.value})}
+                  placeholder="0"
+                />
+                <Input 
+                  label="Nota (opcional)" 
+                  value={abonoData.nota} 
+                  onChange={e => setAbonoData({...abonoData, nota: e.target.value})}
+                  placeholder="Ej: Abono parcial, transferencia..."
+                />
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-white/40">Comprobante (opcional)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setAbonoData({...abonoData, comprobante: reader.result as string});
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="w-full text-sm text-white/40 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/20 file:text-indigo-400 hover:file:bg-indigo-500/30"
+                  />
+                  {abonoData.comprobante && (
+                    <div className="relative inline-block">
+                      <img src={abonoData.comprobante} alt="Comprobante" className="w-20 h-20 object-cover rounded-lg mt-2" />
+                      <button
+                        type="button"
+                        onClick={() => setAbonoData({...abonoData, comprobante: ''})}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <Button type="submit" className="w-full">
+                  <DollarSign className="w-4 h-4 mr-2" /> Registrar Abono
+                </Button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Ver Comprobante */}
+      <Modal show={!!showComprobante} onClose={() => setShowComprobante(null)} title="Comprobante de Pago" size="lg">
+        <div className="flex justify-center">
+          <img src={showComprobante || ''} alt="Comprobante" className="max-w-full max-h-[500px] rounded-lg" />
         </div>
       </Modal>
     </div>

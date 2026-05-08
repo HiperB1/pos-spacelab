@@ -1,4 +1,4 @@
-import type { Cliente, MateriaPrima, Subproducto, Produto, Combo, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem } from './types';
+import type { Cliente, MateriaPrima, Subproducto, Produto, Combo, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem, Abono } from './types';
 
 type DataStore = {
   configuracion: Configuracion;
@@ -11,6 +11,7 @@ type DataStore = {
   facturas: Factura[];
   factura_items: FacturaItem[];
   domiciliarios: Domiciliario[];
+  abonos: Abono[];
   cotizaciones: Cotizacion[];
   cotizacion_items: CotizacionItem[];
   notas_credito: NotaCredito[];
@@ -40,6 +41,7 @@ const defaultData: DataStore = {
   facturas: [],
   factura_items: [],
   domiciliarios: [],
+  abonos: [],
   cotizaciones: [],
   cotizacion_items: [],
   notas_credito: [],
@@ -542,6 +544,63 @@ export function actualizarEstadoEntrega(id: string, nuevoEstado: string): void {
   }
 }
 
+export function getSaldosDomiciliarios(): { domiciliario: Domiciliario; saldoPendiente: number; facturasPendientes: number }[] {
+  const domiciliarios = store.domiciliarios || [];
+  const facturas = store.facturas || [];
+  
+  return domiciliarios.filter(d => d.activo).map(domi => {
+    const facturasDomi = facturas.filter(f => 
+      f.domiciliario_id === domi.id && 
+      f.estado === 'activa' &&
+      (f.estado_entrega === 'en_despacho' || f.estado_entrega === 'entregado')
+    );
+    
+    const totalFacturas = facturasDomi.reduce((sum, f) => sum + f.total, 0);
+    const totalPagado = facturasDomi.filter(f => f.pagada).reduce((sum, f) => sum + f.total, 0);
+    const saldoPendiente = totalFacturas - totalPagado;
+    
+    return {
+      domiciliario: domi,
+      saldoPendiente,
+      facturasPendientes: facturasDomi.filter(f => !f.pagada).length
+    };
+  });
+}
+
+export function getFacturasDomiciliario(domiciliarioId: string): Factura[] {
+  return (store.facturas || []).filter(f => 
+    f.domiciliario_id === domiciliarioId && 
+    f.estado === 'activa' &&
+    (f.estado_entrega === 'en_despacho' || f.estado_entrega === 'entregado')
+  ).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+}
+
+export function marcarFacturaPagada(facturaId: string): void {
+  const fIdx = store.facturas.findIndex(f => f.id === facturaId);
+  if (fIdx >= 0) {
+    store.facturas[fIdx] = {
+      ...store.facturas[fIdx],
+      pagada: !store.facturas[fIdx].pagada
+    };
+    save();
+  }
+}
+
+export function addAbono(data: Omit<Abono, 'id'>): Abono {
+  const id = crypto.randomUUID();
+  const abono: Abono = { ...data, id };
+  if (!store.abonos) store.abonos = [];
+  store.abonos.push(abono);
+  save();
+  return abono;
+}
+
+export function getAbonosDomiciliario(domiciliarioId: string): Abono[] {
+  return (store.abonos || [])
+    .filter(a => a.domiciliario_id === domiciliarioId)
+    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+}
+
 export function getCotizaciones(): any[] {
   return (store.cotizaciones || []).map(c => ({
     ...c,
@@ -704,4 +763,4 @@ export function deleteNotaCredito(id: string): void {
 }
 
 // Force re-export
-export type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem };
+export type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Abono, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem };
