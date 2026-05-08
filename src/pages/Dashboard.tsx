@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  AreaChart, Area, PieChart, Pie, Cell, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
+  AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   Package, Users, DollarSign, TrendingUp,
@@ -332,28 +332,34 @@ export function Dashboard() {
         </Card>
 
         <Card header="Top Productos">
-          <div className="h-[300px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={topProducts} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value">
-                  {topProducts.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #ffffff10', borderRadius: '12px' }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 mt-4">
-              {topProducts.map((p, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                    <span className="text-white/60">{p.name}</span>
-                  </div>
-                  <span className="text-white font-mono">{p.value}</span>
+          <div className="mt-4 space-y-3">
+            {topProducts.map((p, idx) => (
+              <div key={idx} className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                  idx === 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                  idx === 1 ? 'bg-gray-400/20 text-gray-300' :
+                  idx === 2 ? 'bg-amber-700/20 text-amber-600' :
+                  'bg-white/5 text-white/30'
+                }`}>
+                  {idx + 1}
                 </div>
-              ))}
-            </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-white/80 truncate">{p.name}</span>
+                    <span className="text-sm font-mono text-primary">{p.value}</span>
+                  </div>
+                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary rounded-full"
+                      style={{ width: `${topProducts[0].value > 0 ? (p.value / topProducts[0].value) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            {topProducts.length === 0 && (
+              <div className="py-8 text-center text-white/20 italic">No hay ventas registradas.</div>
+            )}
           </div>
         </Card>
       </div>
