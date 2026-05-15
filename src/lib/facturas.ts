@@ -21,12 +21,18 @@ export function getFacturaById(id: string): (Factura & { items: FacturaItem[] })
 export function createFactura(data: {
   cliente_id: string;
   cliente_nome: string;
+  cliente_apellido?: string;
   cliente_celular: string;
+  cliente_email?: string;
   cliente_nit: string;
+  tipo_identificacion?: string;
   cliente_direccion: string;
   items: { descripcion: string; quantidade: number; precio: number }[];
   notas?: string;
   descuento?: number;
+  tipo_pedido?: 'local' | 'nacional';
+  payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
+  ciudad_destino?: string;
 }): Factura & { items: FacturaItem[] } {
   const factura = db.createFactura(data);
   showToast.success('Factura creada exitosamente');
