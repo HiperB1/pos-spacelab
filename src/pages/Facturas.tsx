@@ -484,10 +484,20 @@ export function Facturas() {
     }
   }
 
-  async function openLocalGuide(path: string) {
+  async function openLocalGuide(path: string, fallbackUrl?: string) {
     try {
       await openPath(path);
-    } catch (e: any) {
+      return;
+    } catch {
+      try {
+        await openUrl('file://' + path);
+        return;
+      } catch {}
+      if (fallbackUrl) {
+        toast.warning('No se pudo abrir el archivo local. Abriendo en el navegador...');
+        await openExternalUrl(fallbackUrl);
+        return;
+      }
       toast.error('No se pudo abrir el archivo PDF. Está guardado en: ' + path);
     }
   }
@@ -495,7 +505,7 @@ export function Facturas() {
   async function handleViewGuia(factura: any) {
     // Si ya tenemos la guía descargada localmente, abrirla directamente
     if (factura.venndelo_label_local_path) {
-      await openLocalGuide(factura.venndelo_label_local_path);
+      await openLocalGuide(factura.venndelo_label_local_path, factura.venndelo_label_url);
       return;
     }
 
@@ -511,7 +521,7 @@ export function Facturas() {
         });
         loadData();
         toast.success('Guía descargada', { id: toastId });
-        await openLocalGuide(localPath);
+        await openLocalGuide(localPath, factura.venndelo_label_url);
       } else {
         // Fallback: abrir URL directamente
         toast.warning('No se pudo descargar localmente. Abriendo en el navegador...', { id: toastId });
@@ -574,7 +584,7 @@ export function Facturas() {
 
     if (localPath) {
       toast.success('Guía generada y descargada', { id: toastId });
-      await openLocalGuide(localPath);
+      await openLocalGuide(localPath, label.labelUrl);
     } else {
       toast.success('Guía generada', { id: toastId });
       await openExternalUrl(label.labelUrl);
@@ -1296,7 +1306,7 @@ export function Facturas() {
               {venndeloOrderInfo.factura.venndelo_label_url ? (
                 <Button onClick={async () => {
                   if (venndeloOrderInfo.factura.venndelo_label_local_path) {
-                    await openLocalGuide(venndeloOrderInfo.factura.venndelo_label_local_path);
+                    await openLocalGuide(venndeloOrderInfo.factura.venndelo_label_local_path, venndeloOrderInfo.factura.venndelo_label_url);
                   } else {
                     await openExternalUrl(venndeloOrderInfo.factura.venndelo_label_url);
                   }
