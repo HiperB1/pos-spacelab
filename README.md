@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white"/>
   <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white"/>
   <img src="https://img.shields.io/badge/v0.1.28-00D4FF?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/License-MIT-22BB33?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/License-Restricted-E60000?style=for-the-badge"/>
 </p>
 
 <p align="center">
@@ -259,7 +259,15 @@ La aplicación utiliza una **base de datos local (localStorage)** para garantiza
 <summary><b>📄 Licencia</b></summary>
 <br>
 
-MIT — ver [LICENSE](LICENSE).
+**SpaceLab POS — Licencia de Uso Restringido**
+
+Este software fue desarrollado exclusivamente para **My Space**.  
+No puede ser utilizado directamente por otras empresas u organizaciones.
+
+✅ Permitido: Usar como referencia o inspiración para otros proyectos.  
+❌ Prohibido: Usar, ejecutar o distribuir este software tal cual sin autorización.
+
+Ver [LICENSE](LICENSE) para términos completos.
 
 </details>
 
