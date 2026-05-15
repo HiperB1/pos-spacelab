@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura } from '../lib/facturas';
-import { getProdutos, getCombos, getClientes } from '../lib/database';
+import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
+import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
+import { getCiudades, createOrder, createShipment, generateLabel, getOrder, type CreateOrderResult } from '../lib/venndelo';
+import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
@@ -11,6 +13,8 @@ import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { toast } from 'sonner';
 import { useNavigation } from '../context/NavigationContext';
+import { openUrl, openPath } from '@tauri-apps/plugin-opener';
+import { invoke } from '@tauri-apps/api/core';
 import {
   ReceiptText,
   Plus,
@@ -21,7 +25,10 @@ import {
   Search,
   Truck,
   Package,
-  PackagePlus
+  PackagePlus,
+  Eye,
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 
 interface Factura {
@@ -36,6 +43,16 @@ interface Factura {
   total: number;
   estado: string;
   notas?: string;
+  tipo_pedido?: string;
+  venndelo_order_id?: string;
+  venndelo_tracking?: string;
+  venndelo_label_url?: string;
+  venndelo_label_local_path?: string;
+  venndelo_pin?: string;
+  venndelo_status?: string;
+  cliente_apellido?: string;
+  cliente_direccion?: string;
+  payment_method_code?: string;
 }
 
 interface ItemFactura {
@@ -78,6 +95,24 @@ export function Facturas() {
     { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }
   ]);
 
+  const [tipoPedido, setTipoPedido] = useState<'local' | 'nacional'>('local');
+  const [clienteApellido, setClienteApellido] = useState('');
+  const [clienteEmail, setClienteEmail] = useState('');
+  const [tipoIdentificacion, setTipoIdentificacion] = useState<'CC' | 'NIT'>('CC');
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'EXTERNAL_PAYMENT'>('EXTERNAL_PAYMENT');
+  const [ciudadDestino, setCiudadDestino] = useState('');
+  const [ciudades, setCiudades] = useState<CiudadVenndelo[]>([]);
+  const [showVenndeloSuccess, setShowVenndeloSuccess] = useState(false);
+  const [venndeloResult, setVenndeloResult] = useState<{
+    factura: any;
+    labelUrl: string;
+    tracking: string;
+  } | null>(null);
+  const [creatingVenndelo, setCreatingVenndelo] = useState(false);
+  const [showVenndeloOrder, setShowVenndeloOrder] = useState(false);
+  const [venndeloOrderInfo, setVenndeloOrderInfo] = useState<any>(null);
+  const [venndeloOrderLoading, setVenndeloOrderLoading] = useState(false);
+
   useEffect(() => {
     loadData();
     if (pendingAction === 'new') {
@@ -85,6 +120,12 @@ export function Facturas() {
       setPendingAction(null);
     }
   }, [pendingAction]);
+
+  useEffect(() => {
+    if (showNueva) {
+      getCiudades().then(setCiudades).catch(() => {});
+    }
+  }, [showNueva]);
 
   function loadData() {
     setFacturas(getAllFacturas());
@@ -152,9 +193,13 @@ export function Facturas() {
           cliente_nit: cliente.nit || '',
           cliente_direccion: cliente.direccion || ''
         });
+        setClienteApellido('');
+        setClienteEmail(cliente.email || '');
       }
     } else {
       setFormData({ cliente_id: '', cliente_nome: 'Consumidor Final', cliente_celular: '', cliente_nit: '', cliente_direccion: '' });
+      setClienteApellido('');
+      setClienteEmail('');
     }
   }
 
@@ -199,11 +244,16 @@ export function Facturas() {
     setItems(newItems);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validItems = items.filter(i => i.descripcion && i.quantidade > 0);
     if (validItems.length === 0) {
       toast.error('Debe agregar al menos un ítem válido');
+      return;
+    }
+
+    if (tipoPedido === 'nacional' && !ciudadDestino) {
+      toast.error('Debe seleccionar una ciudad de destino para pedidos nacionales');
       return;
     }
 
@@ -219,10 +269,158 @@ export function Facturas() {
     try {
       const f = createFactura({
         ...formData,
+        cliente_apellido: clienteApellido,
+        cliente_email: clienteEmail,
+        tipo_identificacion: tipoIdentificacion,
         items: itemsParaGuardar,
         notas,
-        descuento
+        descuento,
+        tipo_pedido: tipoPedido,
+        payment_method_code: paymentMethod,
+        ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : ''
       });
+
+      if (tipoPedido === 'nacional') {
+        setCreatingVenndelo(true);
+        const config = getConfiguracion();
+
+          if (!config.api_key_venndelo) {
+            toast.warning('API Key de Venndelo no configurada. La factura se creó pero no se registró el envío.');
+            setCreatingVenndelo(false);
+          } else if (!config.empresa_telefono || !config.empresa_direccion) {
+            const missing: string[] = [];
+            if (!config.empresa_telefono) missing.push('• Teléfono de la empresa');
+            if (!config.empresa_direccion) missing.push('• Dirección de la empresa');
+            toast.custom((t) => (
+              <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
+                    <span className="text-xl">⚙️</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white">Configuración incompleta</p>
+                    <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
+                      Para crear pedidos en Venndelo, necesitas configurar:
+                    </p>
+                    <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
+                      {missing.join('\n')}
+                    </div>
+                    <p className="text-[11px] text-white/40 mt-2">
+                      Ve a Configuración → Datos de la Empresa y completa la información.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ), { duration: 10000 });
+            setCreatingVenndelo(false);
+          } else {
+            let order: CreateOrderResult | null = null;
+            let venndeloError = false;
+            try {
+              order = await createOrder(f, itemsParaGuardar, config.api_key_venndelo, {
+                ciudad_origen: config.ciudad_origen || '',
+                empresa_nome: config.empresa_nome || '',
+                empresa_telefono: config.empresa_telefono || '',
+                empresa_direccion: config.empresa_direccion || ''
+              });
+              if (!order) {
+                // createOrder returned null without throwing (shouldn't happen now, but just in case)
+                venndeloError = true;
+                toast.warning('Factura creada. No se pudo crear el pedido en Venndelo, puedes crearlo manualmente desde el panel.');
+                setCreatingVenndelo(false);
+              }
+            } catch (e: any) {
+              venndeloError = true;
+              const errMsg = e?.message || 'Error desconocido';
+              console.error('[Facturas] createOrder error:', errMsg);
+              // Usar una notificación más detallada que muestre el error real
+              toast.custom((t) => (
+                <div className="bg-surface border border-red-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                      <span className="text-xl">⚠️</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white">Pedido NO creado en Venndelo</p>
+                      <p className="text-xs text-red-400/80 mt-1.5 font-mono leading-relaxed">{errMsg}</p>
+                      <p className="text-[11px] text-white/40 mt-2">La factura se guardó localmente. Puedes crear el pedido manualmente desde el panel de Venndelo.</p>
+                    </div>
+                  </div>
+                </div>
+              ), { duration: 10000 });
+              setCreatingVenndelo(false);
+            }
+
+            if (venndeloError) {
+              // Ya se manejó arriba, no hacer nada más aquí
+            } else if (order) {
+              let tracking = '';
+              let labelUrl = '';
+              let shipmentCreated = false;
+
+              // Verificar si Venndelo ya creó el envío automáticamente
+              const orderShipments = order.shipments;
+              const hasExistingShipments = Array.isArray(orderShipments) && orderShipments.length > 0;
+
+              if (!hasExistingShipments) {
+                // No hay envío aún → intentar crearlo
+                try {
+                  await createShipment(order.id, config.api_key_venndelo);
+                  shipmentCreated = true;
+                } catch (_e) {
+                  // Silencioso — se puede generar desde el modal/historial
+                }
+              } else {
+                // Ya tiene envío → extraer tracking si existe
+                shipmentCreated = true;
+                const existingTracking = orderShipments[0]?.tracking_number;
+                if (existingTracking) tracking = existingTracking;
+              }
+
+              // Intentar generar guía si hay envío
+              let localPath: string | null = null;
+              if (shipmentCreated) {
+                try {
+                  const label = await generateLabel(order.id, config.api_key_venndelo);
+                  labelUrl = label.labelUrl;
+                  if (label.tracking) tracking = label.tracking;
+                  // Descargar localmente
+                  const filename = `guia_${f.numero}.pdf`;
+                  localPath = await downloadGuideLocally(labelUrl, filename);
+                } catch (_e) {
+                  // Silencioso — el usuario puede generar la guía desde el botón Guía
+                }
+              }
+
+              updateFacturaVenndelo(f.id, {
+                venndeloOrderId: order.id,
+                tracking,
+                labelUrl,
+                pin: order.pin,
+                status: order.status,
+                shipmentCreated,
+                venndeloLabelLocalPath: localPath || undefined
+              });
+
+            setVenndeloResult({
+              factura: {
+                ...f,
+                venndelo_order_id: order.id,
+                venndelo_tracking: tracking,
+                venndelo_label_url: labelUrl,
+                venndelo_label_local_path: localPath,
+                venndelo_pin: order.pin,
+                venndelo_status: order.status
+              },
+              labelUrl,
+              tracking
+            });
+            setShowVenndeloSuccess(true);
+            setCreatingVenndelo(false);
+          }
+        }
+      }
+
       toast.success('Factura creada: ' + f.numero);
       setShowNueva(false);
       loadData();
@@ -237,6 +435,14 @@ export function Facturas() {
     setNotas('');
     setDescuento(0);
     setItems([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
+    setTipoPedido('local');
+    setClienteApellido('');
+    setClienteEmail('');
+    setTipoIdentificacion('CC');
+    setPaymentMethod('EXTERNAL_PAYMENT');
+    setCiudadDestino('');
+    setVenndeloResult(null);
+    setShowVenndeloSuccess(false);
   }
 
   function handleAnular() {
@@ -253,8 +459,206 @@ export function Facturas() {
     await gerarPDFFactura(factura);
   }
 
+  async function openExternalUrl(url: string) {
+    try {
+      await openUrl(url);
+    } catch {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }
+
+  async function downloadGuideLocally(url: string, filename: string): Promise<string | null> {
+    try {
+      const localPath = await invoke<string>('download_guide', { url, filename });
+      console.log('[Facturas] Guía descargada localmente:', localPath);
+      return localPath;
+    } catch (e: any) {
+      console.error('[Facturas] Error descargando guía local:', e);
+      return null;
+    }
+  }
+
+  async function openLocalGuide(path: string) {
+    try {
+      await openPath(path);
+    } catch (e: any) {
+      toast.error('No se pudo abrir el archivo PDF. Está guardado en: ' + path);
+    }
+  }
+
   async function handleViewGuia(factura: any) {
-    await gerarPDFGuia(factura);
+    // Si ya tenemos la guía descargada localmente, abrirla directamente
+    if (factura.venndelo_label_local_path) {
+      await openLocalGuide(factura.venndelo_label_local_path);
+      return;
+    }
+
+    // Si tenemos la URL pero no la descarga local, descargar primero
+    if (factura.venndelo_label_url) {
+      const toastId = toast.loading('Descargando guía...');
+      const filename = `guia_${factura.numero}.pdf`;
+      const localPath = await downloadGuideLocally(factura.venndelo_label_url, filename);
+      if (localPath) {
+        updateFacturaVenndelo(factura.id, {
+          venndeloOrderId: factura.venndelo_order_id,
+          venndeloLabelLocalPath: localPath
+        });
+        loadData();
+        toast.success('Guía descargada', { id: toastId });
+        await openLocalGuide(localPath);
+      } else {
+        // Fallback: abrir URL directamente
+        toast.warning('No se pudo descargar localmente. Abriendo en el navegador...', { id: toastId });
+        await openExternalUrl(factura.venndelo_label_url);
+      }
+      return;
+    }
+
+    if (!factura.venndelo_order_id) {
+      toast.error('Esta factura no tiene un pedido Venndelo asociado');
+      return;
+    }
+
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.warning('API Key de Venndelo no configurada');
+      return;
+    }
+
+    const toastId = toast.loading('Generando guía de envío...');
+
+    let hasShipment = false;
+    try {
+      const orderInfo = await getOrder(factura.venndelo_order_id, config.api_key_venndelo);
+      hasShipment = Array.isArray(orderInfo?.shipments) && orderInfo.shipments.length > 0;
+    } catch (_e) {}
+
+    if (!hasShipment) {
+      try {
+        await createShipment(factura.venndelo_order_id, config.api_key_venndelo);
+      } catch (e: any) {
+        const errMsg = e?.message || 'Error desconocido';
+        if (!errMsg.includes('500') && !errMsg.includes('Internal server error')) {
+          toast.warning('No se pudo crear el envío: ' + errMsg + '. Ve al panel de Venndelo.', { id: toastId, duration: 8000 });
+          return;
+        }
+      }
+    }
+
+    let label: { labelUrl: string; tracking: string };
+    try {
+      label = await generateLabel(factura.venndelo_order_id, config.api_key_venndelo);
+    } catch (e: any) {
+      toast.warning('La guía aún no está disponible: ' + (e?.message || 'Error desconocido') + '. Intenta más tarde.', { id: toastId, duration: 8000 });
+      return;
+    }
+
+    // Descargar localmente
+    const filename = `guia_${factura.numero}.pdf`;
+    const localPath = await downloadGuideLocally(label.labelUrl, filename);
+
+    updateFacturaVenndelo(factura.id, {
+      venndeloOrderId: factura.venndelo_order_id,
+      tracking: label.tracking,
+      labelUrl: label.labelUrl,
+      shipmentCreated: true,
+      venndeloLabelLocalPath: localPath || undefined
+    });
+    loadData();
+
+    if (localPath) {
+      toast.success('Guía generada y descargada', { id: toastId });
+      await openLocalGuide(localPath);
+    } else {
+      toast.success('Guía generada', { id: toastId });
+      await openExternalUrl(label.labelUrl);
+    }
+  }
+
+  async function handleViewVenndeloOrder(factura: any) {
+    const config = getConfiguracion();
+
+    // Obtener la factura más actualizada desde la base de datos
+    const facturaActualizada = getAllFacturas().find((f: any) => f.id === factura.id);
+    const orderId = facturaActualizada?.venndelo_order_id || factura.venndelo_order_id;
+
+    if (!orderId) {
+      console.warn('[Facturas] handleViewVenndeloOrder: sin venndelo_order_id', {
+        facturaId: factura.id,
+        facturaNumero: factura.numero,
+        facturaKeys: Object.keys(factura),
+        tieneOrderId: 'venndelo_order_id' in factura,
+        valorOrderId: factura.venndelo_order_id
+      });
+
+      if (!config.api_key_venndelo) {
+        toast.error('API Key de Venndelo no configurada');
+        return;
+      }
+
+      // Intentar buscar por external_order_id (número de factura)
+      toast.loading('Buscando pedido por número de factura...', { id: 'buscar-venndelo' });
+      try {
+        const res = await fetch(`https://api.venndelo.com/v1/admin/orders?external_id=${factura.numero}`, {
+          headers: {
+            'X-Venndelo-Api-Key': config.api_key_venndelo,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.items?.length > 0) {
+            const found = data.items[0];
+            // Guardar el ID encontrado
+            updateFacturaVenndelo(factura.id, {
+              venndeloOrderId: found.id,
+              status: found.status,
+              pin: found.pin
+            });
+            loadData();
+            toast.success('¡Pedido encontrado y vinculado!', { id: 'buscar-venndelo' });
+            // Reabrir con datos
+            setVenndeloOrderInfo({ factura: { ...factura, venndelo_order_id: found.id }, order: found });
+            setShowVenndeloOrder(true);
+            setVenndeloOrderLoading(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('[Facturas] error buscando orden por external_id:', e);
+      }
+      toast.error('No se encontró un pedido Venndelo asociado a esta factura', { id: 'buscar-venndelo' });
+      return;
+    }
+
+    setVenndeloOrderInfo(null);
+    setShowVenndeloOrder(true);
+    setVenndeloOrderLoading(true);
+
+    if (!config.api_key_venndelo) {
+      setVenndeloOrderInfo({
+        error: true,
+        message: 'API Key de Venndelo no configurada',
+        factura
+      });
+      setVenndeloOrderLoading(false);
+      return;
+    }
+
+    const order = await getOrder(orderId, config.api_key_venndelo);
+    setVenndeloOrderInfo({
+      factura: { ...factura, venndelo_order_id: orderId },
+      order,
+      error: !order,
+      message: !order ? 'No se pudo obtener la información desde Venndelo.' : undefined
+    });
+    setVenndeloOrderLoading(false);
   }
 
   function handleExportar(formato: 'excel' | 'csv') {
@@ -302,6 +706,30 @@ export function Facturas() {
       )
     },
     {
+      key: 'envio',
+      header: 'Envío',
+      render: (item) => {
+        if (item.tipo_pedido !== 'nacional') return <span className="text-white/20 text-xs">—</span>;
+        if (item.venndelo_tracking) {
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <span className="text-xs text-green-400 font-medium">{item.venndelo_tracking}</span>
+            </div>
+          );
+        }
+        if (item.venndelo_order_id) {
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+              <span className="text-xs text-yellow-400">Pendiente</span>
+            </div>
+          );
+        }
+        return <span className="text-white/20 text-xs">—</span>;
+      }
+    },
+    {
       key: 'acciones',
       header: '',
       render: (item) => (
@@ -312,6 +740,11 @@ export function Facturas() {
           <Button variant="secondary" size="sm" onClick={() => handleViewGuia(item)} title="Generar Guía de Envío">
             <Truck className="w-4 h-4 mr-1" /> Guía
           </Button>
+          {item.tipo_pedido === 'nacional' && (
+            <Button variant="secondary" size="sm" onClick={() => handleViewVenndeloOrder(item)} title="Ver detalles del pedido Venndelo">
+              <Eye className="w-4 h-4 mr-1" /> Orden
+            </Button>
+          )}
           {item.estado === 'activa' && (
             <Button variant="danger" size="sm" onClick={() => setShowAnular(item)} title="Anular Factura">
               <Ban className="w-4 h-4" />
@@ -410,12 +843,29 @@ export function Facturas() {
                   ...dbClientes.map(c => ({ value: c.id, label: c.nome }))
                 ]}
               />
-              <Input
-                label="Nombre Cliente"
-                value={formData.cliente_nome}
-                onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
-                required
-              />
+              {tipoPedido === 'local' ? (
+                <Input
+                  label="Nombre Cliente"
+                  value={formData.cliente_nome}
+                  onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
+                  required
+                />
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Nombre"
+                    value={formData.cliente_nome}
+                    onChange={e => setFormData({ ...formData, cliente_nome: e.target.value })}
+                    required
+                  />
+                  <Input
+                    label="Apellido"
+                    value={clienteApellido}
+                    onChange={e => setClienteApellido(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input label="Teléfono" value={formData.cliente_celular} onChange={e => setFormData({ ...formData, cliente_celular: e.target.value })} />
@@ -423,6 +873,109 @@ export function Facturas() {
                 <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({ ...formData, cliente_direccion: e.target.value })} />
               </div>
             </div>
+          </div>
+
+          <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+            <label className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 block">
+              Tipo de Pedido
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTipoPedido('local')}
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors ${
+                  tipoPedido === 'local'
+                    ? 'bg-primary/20 text-primary border border-primary/30'
+                    : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                }`}
+              >
+                📍 Local
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoPedido('nacional')}
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors ${
+                  tipoPedido === 'nacional'
+                    ? 'bg-primary/20 text-primary border border-primary/30'
+                    : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                }`}
+              >
+                🚚 Nacional
+              </button>
+            </div>
+
+            {tipoPedido === 'nacional' && (
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Select
+                    label="Tipo de Identificación"
+                    value={tipoIdentificacion}
+                    onChange={e => setTipoIdentificacion(e.target.value as 'CC' | 'NIT')}
+                    options={[
+                      { value: 'CC', label: 'Cédula de Ciudadanía (CC)' },
+                      { value: 'NIT', label: 'NIT' }
+                    ]}
+                  />
+                  <Input
+                    label="Número de Identificación"
+                    value={formData.cliente_nit}
+                    onChange={e => setFormData({ ...formData, cliente_nit: e.target.value })}
+                    placeholder={tipoIdentificacion === 'CC' ? '1234567890' : '900123456-7'}
+                    required
+                  />
+                </div>
+                <Input
+                  label="Correo Electrónico"
+                  type="email"
+                  value={clienteEmail}
+                  onChange={e => setClienteEmail(e.target.value)}
+                  placeholder="cliente@ejemplo.com"
+                />
+                <Select
+                  label="Ciudad de Destino"
+                  value={ciudadDestino}
+                  onChange={e => setCiudadDestino(e.target.value)}
+                  options={[
+                    { value: '', label: 'Seleccionar ciudad...' },
+                    ...ciudades.map(c => ({
+                      value: c.code,
+                      label: `${c.name}${c.department ? `, ${c.department}` : ''}`
+                    }))
+                  ]}
+                />
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                  <label className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 block">
+                    💳 Método de Pago
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('EXTERNAL_PAYMENT')}
+                      className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
+                        paymentMethod === 'EXTERNAL_PAYMENT'
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                      }`}
+                    >
+                      <span className="block font-bold">Ya Pagado</span>
+                      <span className="block text-[10px] opacity-70 mt-0.5">El cliente ya pagó por otro medio</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('COD')}
+                      className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
+                        paymentMethod === 'COD'
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                      }`}
+                    >
+                      <span className="block font-bold">Contra Entrega</span>
+                      <span className="block text-[10px] opacity-70 mt-0.5">El transportador cobra al entregar</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -565,7 +1118,9 @@ export function Facturas() {
 
           <div className="flex justify-end gap-3">
             <Button variant="secondary" type="button" onClick={() => setShowNueva(false)}>Cancelar</Button>
-            <Button type="submit" size="lg">Emitir Factura</Button>
+            <Button type="submit" size="lg" loading={creatingVenndelo}>
+              {creatingVenndelo ? 'Creando envío...' : 'Emitir Factura'}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -591,6 +1146,181 @@ export function Facturas() {
           </div>
         </Modal>
       )}
+
+      <Modal
+        show={showVenndeloSuccess}
+        onClose={() => setShowVenndeloSuccess(false)}
+        title="✅ Pedido Creado en Venndelo"
+        size="md"
+      >
+        <div className="space-y-6 text-center">
+          <div className="bg-primary/10 p-6 rounded-2xl border border-primary/20">
+            <p className="text-3xl mb-3">✅</p>
+            <p className="text-white/90 text-lg font-medium">
+              Factura <strong className="text-primary">{venndeloResult?.factura?.numero}</strong> creada
+              y pedido registrado en <strong>Venndelo</strong> correctamente.
+            </p>
+            <div className="flex items-center justify-center gap-4 mt-4 text-sm">
+              <span className="px-3 py-1 bg-white/10 rounded-lg text-white/60">
+                {venndeloResult?.factura?.payment_method_code === 'COD' ? '💰 Contra Entrega' : '💳 Ya Pagado'}
+              </span>
+              {venndeloResult?.tracking && (
+                <span className="px-3 py-1 bg-white/10 rounded-lg text-white/60">
+                  📦 Tracking: <span className="text-white font-mono">{venndeloResult.tracking}</span>
+                </span>
+              )}
+            </div>
+            {!venndeloResult?.labelUrl && venndeloResult?.factura?.venndelo_order_id && (
+              <p className="text-xs text-white/50 mt-4">
+                Si deseas generar la guía de envío, puedes hacerlo desde el botón <strong className="text-white/70">Guía</strong> en el historial de facturas.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => venndeloResult?.factura && gerarPDFFactura(venndeloResult.factura)}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Descargar PDF Factura
+            </Button>
+            {venndeloResult?.labelUrl ? (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (venndeloResult.factura?.venndelo_label_local_path) {
+                    await openLocalGuide(venndeloResult.factura.venndelo_label_local_path);
+                  } else {
+                    await openExternalUrl(venndeloResult.labelUrl);
+                  }
+                }}
+              >
+                <Truck className="w-4 h-4 mr-2" />
+                Abrir Guía de Envío
+              </Button>
+            ) : venndeloResult?.factura?.venndelo_order_id ? (
+              <Button
+                variant="ghost"
+                onClick={() => openExternalUrl('https://app.venndelo.com/orders')}
+              >
+                <Truck className="w-4 h-4 mr-2" />
+                Ir al panel de Venndelo
+              </Button>
+            ) : null}
+          </div>
+
+          <p className="text-xs text-white/30">
+            Puedes cerrar esta ventana y descargar los documentos después desde el historial.
+          </p>
+        </div>
+      </Modal>
+
+      <Modal
+        show={showVenndeloOrder}
+        onClose={() => setShowVenndeloOrder(false)}
+        title="📦 Detalles del Pedido Venndelo"
+        size="lg"
+      >
+        {venndeloOrderLoading ? (
+          <div className="text-center py-12 text-white/40">Cargando información del pedido...</div>
+        ) : venndeloOrderInfo?.error ? (
+          <div className="space-y-4">
+            <p className="text-white/60">
+              {venndeloOrderInfo.message || 'No se pudo obtener la información del pedido desde Venndelo.'}
+            </p>
+            <div className="bg-surface p-4 rounded-2xl space-y-2">
+              <p className="text-sm text-white/40">Order ID local:</p>
+              <p className="text-sm text-white font-mono">{venndeloOrderInfo.factura?.venndelo_order_id}</p>
+              {venndeloOrderInfo.factura?.venndelo_tracking && (
+                <>
+                  <p className="text-sm text-white/40">Tracking:</p>
+                  <p className="text-sm text-white font-mono">{venndeloOrderInfo.factura.venndelo_tracking}</p>
+                </>
+              )}
+            </div>
+            <Button variant="secondary" onClick={() => openExternalUrl('https://app.venndelo.com/orders')}>
+              <ExternalLink className="w-4 h-4 mr-2" /> Ir al panel de Venndelo
+            </Button>
+          </div>
+        ) : venndeloOrderInfo ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">Factura</p>
+                <p className="text-white font-bold">{venndeloOrderInfo.factura.numero}</p>
+              </div>
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">Estado en Venndelo</p>
+                <Badge variant={
+                  venndeloOrderInfo.order?.status === 'CONFIRMED' || venndeloOrderInfo.order?.status === 'SUCCESS'
+                    ? 'success' : 'warning'
+                }>
+                  {venndeloOrderInfo.order?.status || 'Desconocido'}
+                </Badge>
+              </div>
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">Order ID</p>
+                <p className="text-sm text-white font-mono text-xs break-all">
+                  {venndeloOrderInfo.order?.id || venndeloOrderInfo.factura.venndelo_order_id}
+                </p>
+              </div>
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">PIN</p>
+                <p className="text-sm text-white font-mono">
+                  {venndeloOrderInfo.order?.pin || venndeloOrderInfo.factura.venndelo_pin || '—'}
+                </p>
+              </div>
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">Tracking</p>
+                <p className="text-sm text-white font-mono">
+                  {venndeloOrderInfo.order?.tracking || venndeloOrderInfo.factura.venndelo_tracking || '—'}
+                </p>
+              </div>
+              <div className="bg-surface p-4 rounded-2xl space-y-1">
+                <p className="text-xs text-white/40">Método de Pago</p>
+                <p className="text-sm text-white">
+                  {venndeloOrderInfo.factura.payment_method_code === 'COD' ? '💰 Contra Entrega' : '💳 Ya Pagado'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-surface p-4 rounded-2xl space-y-1">
+              <p className="text-xs text-white/40">Cliente</p>
+              <p className="text-white">
+                {venndeloOrderInfo.factura.cliente_nome} {venndeloOrderInfo.factura.cliente_apellido || ''}
+              </p>
+              <p className="text-sm text-white/60">{venndeloOrderInfo.factura.cliente_direccion}</p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {venndeloOrderInfo.factura.venndelo_label_url ? (
+                <Button onClick={async () => {
+                  if (venndeloOrderInfo.factura.venndelo_label_local_path) {
+                    await openLocalGuide(venndeloOrderInfo.factura.venndelo_label_local_path);
+                  } else {
+                    await openExternalUrl(venndeloOrderInfo.factura.venndelo_label_url);
+                  }
+                }}>
+                  <Truck className="w-4 h-4 mr-2" /> Abrir Guía de Envío
+                </Button>
+              ) : (
+                <Button variant="secondary" onClick={() => {
+                  setShowVenndeloOrder(false);
+                  handleViewGuia(venndeloOrderInfo.factura);
+                }}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> Generar Guía de Envío
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => openExternalUrl(`https://app.venndelo.com/orders/${venndeloOrderInfo.factura.venndelo_order_id}`)}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" /> Ver en Venndelo
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
