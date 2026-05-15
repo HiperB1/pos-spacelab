@@ -29,7 +29,7 @@
 <p align="center">
   <b>SpaceLab POS</b> es una aplicación de escritorio robusta diseñada para la gestión integral de
   facturación, inventarios, contabilidad y logística de entregas. Construida con tecnologías modernas,
-  ofrece una interfaz premium, oscura y altamente eficiente para <b>My Space</b> (impresión 3D).
+  ofrece una interfaz premium, oscura y altamente eficiente para <b>Space Lab</b> (impresión 3D).
 </p>
 
 <br>
@@ -265,7 +265,7 @@ La aplicación utiliza una **base de datos local (localStorage)** para garantiza
 
 **SpaceLab POS — Licencia de Uso Restringido**
 
-Este software fue desarrollado exclusivamente para **My Space**.  
+Este software fue desarrollado exclusivamente para **Space Lab**.  
 No puede ser utilizado directamente por otras empresas u organizaciones.
 
 ✅ Permitido: Usar como referencia o inspiración para otros proyectos.  
@@ -277,27 +277,10 @@ Ver [LICENSE](LICENSE) para términos completos.
 
 <br>
 
-<details>
-<summary><b>🙏 Créditos</b></summary>
-<br>
 
-Desarrollado con ❤️ para **My Space** por el equipo de RavenCorp.
-
-</details>
 
 <br>
 
-~~~
-                                                ___
-                                               | _ \
-                                               |   /
-                                               |_|_\
-  ____   __   ____  ____   __   ____  ____     | __ ) _   _  ___  ___  ___
- |  _ \  \ \ / /\ \/ /\ \ / /  |  _ \|  _ \    |  _ \| | | |/ _ \/ _ \/ __|
- | |_) |  \ V /  \  /  \ V /   | |_) | |_) |   | |_) | |_| |  __/  __/\__ \
- | .__/    \_/    \/    \_/    | .__/|  __/     |_.__/ \__, |\___|\___||___/
- |_|                           |_|   |_|                |___/
-~~~
 
 <p align="center">
   <b>Firmado por <span style="color:#0D0D0D">Raven</span><span style="color:#E60000">Corp</span></b>
