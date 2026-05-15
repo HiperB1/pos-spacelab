@@ -302,6 +302,23 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
         layout: 'lightHorizontalLines',
         margin: [0, 0, 0, 20]
       },
+      ...(factura.venndelo_order_id ? [
+        { text: 'DATOS DEL ENVÍO (VENNDELO)', style: 'sectionTitle', margin: [0, 10, 0, 5] },
+        {
+          columns: [
+            { text: 'Order ID:', style: 'labelInfo', width: 80 },
+            { text: factura.venndelo_order_id, style: 'valueInfo' }
+          ],
+          margin: [0, 5, 0, 2]
+        },
+        ...(factura.venndelo_tracking ? [{
+          columns: [
+            { text: 'Tracking:', style: 'labelInfo', width: 80 },
+            { text: factura.venndelo_tracking, style: 'valueInfo' }
+          ],
+          margin: [0, 0, 0, 2]
+        }] : []),
+      ] : []),
       ...(factura.notas ? [
         { text: 'NOTAS ADICIONALES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
         { text: factura.notas, style: 'empresaInfo' }
