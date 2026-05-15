@@ -352,8 +352,11 @@ export function createFactura(data: any): any {
     numero,
     cliente_id: data.cliente_id,
     cliente_nome: data.cliente_nome,
+    cliente_apellido: data.cliente_apellido || '',
     cliente_celular: data.cliente_celular || '',
+    cliente_email: data.cliente_email || '',
     cliente_nit: data.cliente_nit,
+    tipo_identificacion: data.tipo_identificacion || 'CC',
     cliente_direccion: data.cliente_direccion,
     fecha: new Date().toISOString().split('T')[0],
     subtotal,
@@ -362,7 +365,10 @@ export function createFactura(data: any): any {
     total,
     estado: 'activa',
     notas: data.notas || '',
-    estado_entrega: 'pendiente'
+    tipo_pedido: data.tipo_pedido || 'local',
+    payment_method_code: data.payment_method_code || 'EXTERNAL_PAYMENT',
+    ciudad_destino: data.ciudad_destino || '',
+    estado_entrega: data.tipo_pedido === 'nacional' ? 'en_validacion' : 'pendiente'
   };
   
   store.facturas.push(factura);
@@ -399,6 +405,42 @@ export function createFactura(data: any): any {
   save();
   
   return { ...factura, items };
+}
+
+export function updateFacturaVenndelo(
+  facturaId: string,
+  data: {
+    venndeloOrderId: string;
+    tracking?: string;
+    labelUrl?: string;
+    pin?: string;
+    status?: string;
+    shipmentCreated?: boolean;
+    venndeloLabelLocalPath?: string;
+  }
+): void {
+  const idx = store.facturas.findIndex(f => f.id === facturaId);
+  if (idx >= 0) {
+    store.facturas[idx] = {
+      ...store.facturas[idx],
+      venndelo_order_id: data.venndeloOrderId,
+      venndelo_tracking: data.tracking ?? store.facturas[idx].venndelo_tracking,
+      venndelo_label_url: data.labelUrl ?? store.facturas[idx].venndelo_label_url,
+      venndelo_pin: data.pin ?? store.facturas[idx].venndelo_pin,
+      venndelo_status: data.status ?? store.facturas[idx].venndelo_status,
+      venndelo_shipment_created: data.shipmentCreated ?? store.facturas[idx].venndelo_shipment_created,
+      venndelo_label_local_path: data.venndeloLabelLocalPath ?? store.facturas[idx].venndelo_label_local_path
+    };
+    save();
+    console.log('[database] updateFacturaVenndelo: factura actualizada', {
+      facturaId,
+      facturaNumero: store.facturas[idx].numero,
+      venndelo_order_id: store.facturas[idx].venndelo_order_id,
+      venndelo_label_local_path: store.facturas[idx].venndelo_label_local_path
+    });
+  } else {
+    console.warn('[database] updateFacturaVenndelo: factura NO encontrada', { facturaId });
+  }
 }
 
 export function anularFactura(id: string, motivo: string): void {
