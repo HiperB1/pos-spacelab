@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+  <sub><b>Desarrollado por <span style="color:#0D0D0D">Raven</span><span style="color:#E60000">Corp</span></b></sub>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"/>
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white"/>
   <img src="https://img.shields.io/badge/Tauri-FFC131?style=for-the-badge&logo=tauri&logoColor=black"/>
