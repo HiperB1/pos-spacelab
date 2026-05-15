@@ -81,8 +81,11 @@ export interface Factura {
   numero: string;
   cliente_id: string;
   cliente_nome: string;
+  cliente_apellido?: string;
   cliente_celular: string;
+  cliente_email?: string;
   cliente_nit: string;
+  tipo_identificacion?: string;
   cliente_direccion: string;
   fecha: string;
   subtotal: number;
@@ -93,7 +96,19 @@ export interface Factura {
   notas?: string;
   motivo_anulacion?: string;
   fecha_anulacion?: string;
-  
+
+  // Tipo de pedido
+  tipo_pedido?: 'local' | 'nacional';
+  payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
+  ciudad_destino?: string;
+  venndelo_order_id?: string;
+  venndelo_tracking?: string;
+  venndelo_label_url?: string;
+  venndelo_pin?: string;
+  venndelo_status?: string;
+  venndelo_shipment_created?: boolean;
+  venndelo_label_local_path?: string;
+
   // Entrega / Pedidos - Estados expandidos
   estado_entrega?: 
     | 'pendiente'        // Recebido, esperando validación
