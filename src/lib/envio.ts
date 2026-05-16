@@ -245,7 +245,9 @@ export function getCiudadesFallback(): CiudadVenndelo[] {
 export async function cotizarEnvio(
   ciudadDestino: string,
   pesoKg: number,
-  subdivisionDestino?: string
+  subdivisionDestino?: string,
+  paymentMethodCode: string = 'EXTERNAL_PAYMENT',
+  unitPrice: number = 0
 ): Promise<CotizacionEnvioResult[]> {
   const config = getConfiguracion();
   const apiKey = config.api_key_venndelo;
@@ -280,7 +282,7 @@ export async function cotizarEnvio(
           {
             sku: 'ITEM-001',
             name: 'Producto',
-            unit_price: 0,
+            unit_price: unitPrice,
             free_shipping: false,
             height: 15,
             width: 20,
@@ -291,7 +293,7 @@ export async function cotizarEnvio(
             quantity: 1
           }
         ],
-        payment_method_code: 'EXTERNAL_PAYMENT'
+        payment_method_code: paymentMethodCode
       })
     });
 
@@ -321,10 +323,13 @@ export async function cotizarEnvio(
 
 export async function cotizarEnvioSimple(
   ciudadDestino: string,
-  pesoKg?: number
+  pesoKg?: number,
+  subdivisionDestino?: string,
+  paymentMethodCode: string = 'EXTERNAL_PAYMENT',
+  unitPrice: number = 0
 ): Promise<number> {
   try {
-    const quotes = await cotizarEnvio(ciudadDestino, pesoKg || 0.5);
+    const quotes = await cotizarEnvio(ciudadDestino, pesoKg || 0.5, subdivisionDestino, paymentMethodCode, unitPrice);
     if (quotes.length > 0) {
       return quotes[0].price;
     }
