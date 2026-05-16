@@ -313,7 +313,14 @@ export function Facturas() {
     setCargandoEnvio(true);
     try {
       const ciudad = ciudades.find(c => c.code === ciudadDestino);
-      const precio = await cotizarEnvioSimple(ciudadDestino, 0.5);
+      const subtotalActual = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
+      const precio = await cotizarEnvioSimple(
+        ciudadDestino,
+        0.5,
+        ciudad?.subdivision_code,
+        paymentMethod,
+        subtotalActual
+      );
       setCostoEnvio(precio);
       setEnvioCalculado(true);
       toast.success(`Envío cotizado: ${formatCurrency(precio)}`);
@@ -1086,7 +1093,7 @@ export function Facturas() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('EXTERNAL_PAYMENT')}
+                      onClick={() => { setPaymentMethod('EXTERNAL_PAYMENT'); setCostoEnvio(0); setEnvioCalculado(false); }}
                       className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
                         paymentMethod === 'EXTERNAL_PAYMENT'
                           ? 'bg-primary/20 text-primary border border-primary/30'
@@ -1098,7 +1105,7 @@ export function Facturas() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('COD')}
+                      onClick={() => { setPaymentMethod('COD'); setCostoEnvio(0); setEnvioCalculado(false); }}
                       className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
                         paymentMethod === 'COD'
                           ? 'bg-primary/20 text-primary border border-primary/30'
