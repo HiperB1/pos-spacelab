@@ -268,7 +268,7 @@ export type CreateOrderResult = {
 
 export async function createOrder(
   factura: Factura,
-  items: { descripcion: string; quantidade: number; precio: number }[],
+  items: { descripcion: string; quantidade: number; precio: number; venndelo_id?: string; codigo?: string }[],
   apiKey: string,
   config: { ciudad_origen: string; empresa_nome: string; empresa_telefono: string; empresa_direccion: string }
 ): Promise<CreateOrderResult | null> {
@@ -308,7 +308,8 @@ export async function createOrder(
       phone: factura.cliente_celular || ''
     },
     line_items: items.map((item, idx) => ({
-      sku: `ITEM-${idx + 1}`,
+      ...(item.venndelo_id ? { product_id: item.venndelo_id } : {}),
+      sku: item.codigo || `ITEM-${idx + 1}`,
       name: item.descripcion,
       unit_price: item.precio,
       quantity: item.quantidade,
@@ -339,7 +340,7 @@ export async function createOrder(
       let detail = '';
       try {
         const errJson = JSON.parse(errorText);
-        detail = errJson.message || errJson.detail || errJson.error || '';
+        detail = (Array.isArray(errJson.errors) && errJson.errors[0]?.message) || errJson.message || errJson.detail || errJson.error?.message || errJson.error || '';
       } catch { detail = errorText.substring(0, 300); }
       console.error('[venndelo] createOrder error:', response.status, detail);
       // Lanzamos el error con detalles para que el caller lo muestre
@@ -395,7 +396,7 @@ export async function createShipment(orderId: string, apiKey: string): Promise<v
       let detail = '';
       try {
         const errJson = JSON.parse(errorText);
-        detail = errJson.error?.message || errJson.message || JSON.stringify(errJson.error) || errorText;
+        detail = (Array.isArray(errJson.errors) && errJson.errors[0]?.message) || errJson.error?.message || errJson.message || errJson.detail || errorText;
       } catch { detail = errorText.substring(0, 300); }
       console.error('[venndelo] createShipment error:', response.status, detail);
       throw new Error(`Error al crear envío (HTTP ${response.status}): ${detail}`);
@@ -439,7 +440,7 @@ export async function generateLabel(
         let detail = '';
         try {
           const errJson = JSON.parse(errorText);
-          detail = errJson.error?.message || errJson.message || JSON.stringify(errJson.error) || errorText;
+          detail = (Array.isArray(errJson.errors) && errJson.errors[0]?.message) || errJson.error?.message || errJson.message || errJson.detail || errorText;
         } catch { detail = errorText.substring(0, 300); }
         console.error('[venndelo] generateLabel error:', response.status, detail);
         throw new Error(`Error al generar guía (HTTP ${response.status}): ${detail}`);

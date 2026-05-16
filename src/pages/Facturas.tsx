@@ -55,11 +55,63 @@ interface Factura {
   payment_method_code?: string;
 }
 
+function interpretarErrorVenndelo(errMsg: string): { causa: string; solucion: string } {
+  const msg = errMsg.toLowerCase();
+
+  if (msg.includes('tarifa de transporte no localizada') || (msg.includes('422') && msg.includes('transport'))) {
+    return {
+      causa: 'El transportador no tiene cobertura en la ciudad de destino, o el método "Contra Entrega" no está disponible para esa ruta.',
+      solucion: 'Selecciona una ciudad principal o capital de departamento. Si el destino es correcto, intenta con el método de pago "Ya Pagado".'
+    };
+  }
+  if (msg.includes('422')) {
+    return {
+      causa: 'Venndelo rechazó el pedido porque algún dato no es válido para esa ruta o producto.',
+      solucion: 'Revisa la ciudad de destino, el método de pago y las dimensiones del producto.'
+    };
+  }
+  if (msg.includes('invalid values') || (msg.includes('500') && msg.includes('entity'))) {
+    return {
+      causa: 'Los datos del pedido no son válidos: precio cero, nombre de cliente muy corto o campos requeridos vacíos.',
+      solucion: 'Verifica que el producto tenga precio mayor a $0 y que los datos del cliente (nombre, teléfono, dirección) estén completos.'
+    };
+  }
+  if (msg.includes('500')) {
+    return {
+      causa: 'Error interno de Venndelo al procesar el pedido.',
+      solucion: 'Intenta de nuevo en unos minutos o crea el pedido manualmente desde el panel de Venndelo.'
+    };
+  }
+  if (msg.includes('401') || msg.includes('403') || msg.includes('api key') || msg.includes('unauthorized')) {
+    return {
+      causa: 'El API Key de Venndelo no es válido o no tiene los permisos necesarios.',
+      solucion: 'Ve a Configuración → Integración y verifica que el API Key de Venndelo sea correcto.'
+    };
+  }
+  if (msg.includes('no se pudo conectar') || msg.includes('failed to fetch') || msg.includes('network')) {
+    return {
+      causa: 'No se pudo establecer conexión con Venndelo.',
+      solucion: 'Verifica tu conexión a internet e intenta de nuevo.'
+    };
+  }
+  if (msg.includes('id de orden') || msg.includes('order') || msg.includes('id válido')) {
+    return {
+      causa: 'El pedido se creó en Venndelo pero no se pudo confirmar el ID de la orden.',
+      solucion: 'Revisa el panel de Venndelo para confirmar si el pedido fue creado y vincúlalo manualmente si es necesario.'
+    };
+  }
+  return {
+    causa: 'Venndelo rechazó el pedido por una razón desconocida.',
+    solucion: 'Puedes crear el pedido manualmente desde el panel de Venndelo o contactar al soporte.'
+  };
+}
+
 interface ItemFactura {
   tipo_item: 'inventario' | 'manual';
   origen: 'produto' | 'combo';
   produto_id?: string;
   combo_id?: string;
+  venndelo_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -239,6 +291,7 @@ export function Facturas() {
         newItems[index].produto_id = id;
         newItems[index].descripcion = prod?.nome || '';
         newItems[index].precio = prod?.preco || 0;
+        newItems[index].venndelo_id = prod?.venndelo_id;
       }
     }
     setItems(newItems);
@@ -261,6 +314,7 @@ export function Facturas() {
       tipo_item: item.tipo_item === 'inventario' ? item.origen : 'manual',
       produto_id: item.produto_id,
       combo_id: item.combo_id,
+      venndelo_id: item.venndelo_id,
       descripcion: item.descripcion,
       quantidade: item.quantidade,
       precio: item.precio
@@ -286,6 +340,32 @@ export function Facturas() {
 
           if (!config.api_key_venndelo) {
             toast.warning('API Key de Venndelo no configurada. La factura se creó pero no se registró el envío.');
+            setCreatingVenndelo(false);
+          } else if (!f.cliente_celular || !f.cliente_direccion) {
+            const missing: string[] = [];
+            if (!f.cliente_celular) missing.push('• Teléfono del cliente');
+            if (!f.cliente_direccion) missing.push('• Dirección del cliente');
+            toast.custom((t) => (
+              <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
+                    <span className="text-xl">⚠️</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white">Datos del cliente incompletos</p>
+                    <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
+                      Para crear el pedido en Venndelo, el cliente debe tener:
+                    </p>
+                    <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
+                      {missing.join('\n')}
+                    </div>
+                    <p className="text-[11px] text-white/40 mt-2">
+                      La factura se guardó localmente. Completa los datos del cliente y vuelve a intentarlo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ), { duration: 10000 });
             setCreatingVenndelo(false);
           } else if (!config.empresa_telefono || !config.empresa_direccion) {
             const missing: string[] = [];
@@ -333,7 +413,7 @@ export function Facturas() {
               venndeloError = true;
               const errMsg = e?.message || 'Error desconocido';
               console.error('[Facturas] createOrder error:', errMsg);
-              // Usar una notificación más detallada que muestre el error real
+              const { causa, solucion } = interpretarErrorVenndelo(errMsg);
               toast.custom((t) => (
                 <div className="bg-surface border border-red-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
                   <div className="flex items-start gap-3">
@@ -341,13 +421,16 @@ export function Facturas() {
                       <span className="text-xl">⚠️</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white">Pedido NO creado en Venndelo</p>
-                      <p className="text-xs text-red-400/80 mt-1.5 font-mono leading-relaxed">{errMsg}</p>
-                      <p className="text-[11px] text-white/40 mt-2">La factura se guardó localmente. Puedes crear el pedido manualmente desde el panel de Venndelo.</p>
+                      <p className="text-sm font-bold text-white">Pedido no creado en Venndelo</p>
+                      <p className="text-xs text-red-400 font-semibold mt-2">¿Por qué ocurrió?</p>
+                      <p className="text-xs text-white/70 mt-1 leading-relaxed">{causa}</p>
+                      <p className="text-xs text-yellow-400 font-semibold mt-2">¿Qué hacer?</p>
+                      <p className="text-xs text-white/70 mt-1 leading-relaxed">{solucion}</p>
+                      <p className="text-[10px] text-white/30 mt-3 font-mono border-t border-white/10 pt-2">{errMsg}</p>
                     </div>
                   </div>
                 </div>
-              ), { duration: 10000 });
+              ), { duration: 15000 });
               setCreatingVenndelo(false);
             }
 
@@ -1053,7 +1136,7 @@ export function Facturas() {
                                 className="w-full bg-[#1a1a2e] border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-primary/50 outline-none [&>option]:bg-[#1a1a2e] [&>option]:text-white"
                               >
                                 <option value="">Seleccionar producto...</option>
-                                {productos.filter(p => p.quantidade_stock > 0 || p.quantidade_stock === undefined).map(p => (
+                                {productos.filter(p => p.quantidade_stock > 0 || p.quantidade_stock === undefined || p.venndelo_id).map(p => (
                                   <option key={p.id} value={p.id}>
                                     {p.nome} - {formatCurrency(p.preco)} {p.quantidade_stock !== undefined ? `(Stock: ${p.quantidade_stock})` : ''}
                                   </option>
