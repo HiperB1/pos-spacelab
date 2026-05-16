@@ -40,6 +40,7 @@ export interface Produto {
   preco: number;
   custo: number;
   quantidade_stock?: number;
+  venndelo_id?: string;
 }
 
 export interface Combo {

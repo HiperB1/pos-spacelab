@@ -10,8 +10,9 @@ import { HistorialInventario } from './pages/HistorialInventario';
 import { ConfiguracionPage } from './pages/Configuracion';
 import { Cotizaciones } from './pages/Cotizaciones';
 import { NotasCredito } from './pages/NotasCredito';
-import { initDatabase } from './lib/database';
-import { Toaster } from 'sonner';
+import { initDatabase, getConfiguracion } from './lib/database';
+import { sincronizarProductosVenndelo, shouldAutoSync } from './lib/venndelo';
+import { Toaster, toast } from 'sonner';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { GlobalSearch } from './components/ui/GlobalSearch';
 import { KeyboardShortcutsGuide } from './components/ui/KeyboardShortcuts';
@@ -34,6 +35,22 @@ function AppContent() {
         console.error('[APP] Error initializing database:', e);
       } finally {
         setLoading(false);
+      }
+
+      const config = getConfiguracion();
+      if (config.api_key_venndelo && shouldAutoSync()) {
+        console.log('[APP] Auto-sync Venndelo products...');
+        try {
+          const result = await sincronizarProductosVenndelo();
+          console.log('[APP] Auto-sync complete:', result);
+          if (result.creados > 0 || result.actualizados > 0) {
+            toast.info(
+              `Productos sincronizados con Venndelo: ${result.creados} nuevos, ${result.actualizados} actualizados`
+            );
+          }
+        } catch (e) {
+          console.warn('[APP] Auto-sync fallido (silencioso):', e);
+        }
       }
     }
     init();

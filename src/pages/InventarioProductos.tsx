@@ -9,7 +9,9 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { toast } from 'sonner';
 import { useNavigation } from '../context/NavigationContext';
-import { Box, Plus, FileSpreadsheet, Trash2, Edit3, Settings2 } from 'lucide-react';
+import { Box, Plus, FileSpreadsheet, Trash2, Edit3, Settings2, RefreshCw } from 'lucide-react';
+import { getConfiguracion } from '../lib/database';
+import { sincronizarProductosVenndelo, getVenndeloLastSync } from '../lib/venndelo';
 
 interface Produto {
   id: string;
@@ -21,6 +23,7 @@ interface Produto {
   preco: number;
   custo: number;
   quantidade_stock?: number;
+  venndelo_id?: string;
 }
 
 export function InventarioProductos() {
@@ -42,6 +45,8 @@ export function InventarioProductos() {
   });
   const [componentes, setComponentes] = useState<any[]>([]);
   const [nuevoComponente, setNuevoComponente] = useState({ subproductoId: '', quantidade: 1 });
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(() => getVenndeloLastSync());
 
   useEffect(() => {
     loadData();
@@ -137,6 +142,28 @@ function openModal() {
     toast.success('Exportación completada');
   }
 
+  async function handleSyncVenndelo() {
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.error('API key de Venndelo no configurada. Ve a Configuración para agregarla.');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const result = await sincronizarProductosVenndelo();
+      setLastSync(getVenndeloLastSync());
+      loadData();
+      toast.success(
+        `Sincronización completa: ${result.creados} creados, ${result.actualizados} actualizados (${result.total} en Venndelo)`
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error al sincronizar con Venndelo: ${msg}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   function handleAddComponente() {
     if (!selectedProd || !nuevoComponente.subproductoId) return;
     addComponente(selectedProd.id, nuevoComponente.subproductoId, nuevoComponente.quantidade);
@@ -204,7 +231,16 @@ function openModal() {
             </div>
             <h3 className="card-title">Productos Terminados</h3>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            {lastSync && (
+              <span className="text-xs text-white/30 hidden sm:block">
+                Sync: {new Date(lastSync).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
+              </span>
+            )}
+            <Button variant="secondary" size="sm" onClick={handleSyncVenndelo} disabled={syncing}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar con Venndelo'}
+            </Button>
             <Button variant="secondary" size="sm" onClick={handleExportCSV}>
               <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar
             </Button>
