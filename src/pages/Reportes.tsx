@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
-import { exportToExcel } from '../lib/export';
+import { exportContabilidadDetallada } from '../lib/export';
 import { toast } from 'sonner';
 
 const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#facc15', '#64748b'];
@@ -46,23 +46,26 @@ export function Reportes() {
   const productos = useMemo(() => getProdutos(), []);
 
   const reportData = useMemo(() => {
-    let filtradas = facturas.filter(f => {
+    const filtradas = facturas.filter(f => {
       const enRango = f.fecha >= fechaInicio && f.fecha <= fechaFin;
       const coincideEstado = filtroEstado === 'todas' || f.estado === filtroEstado;
       return enRango && coincideEstado;
     });
 
-    // 1. KPI Calculations
     let totalVentas = 0;
     let totalCosto = 0;
     let itemsVendidos = 0;
+    let totalDescuentos = 0;
+    let totalEnvios = 0;
     const ventasPorDia: Record<string, { total: number; costo: number; profit: number }> = {};
     const ventasPorProducto: Record<string, { name: string; quantity: number; revenue: number; cost: number }> = {};
     const listaVentasDetalladas: any[] = [];
 
     filtradas.forEach(f => {
       totalVentas += f.total;
-      
+      totalDescuentos += f.descuento || 0;
+      totalEnvios += f.costo_envio || 0;
+
       if (!ventasPorDia[f.fecha]) {
         ventasPorDia[f.fecha] = { total: 0, costo: 0, profit: 0 };
       }
@@ -70,12 +73,11 @@ export function Reportes() {
 
       f.items.forEach(item => {
         itemsVendidos += item.quantidade;
-        
-        // Buscar el costo actual del producto (o aproximado)
+
         const pInfo = productos.find(p => p.nome === item.descripcion);
         const costoUnitario = pInfo?.custo || 0;
         const costoTotalItem = costoUnitario * item.quantidade;
-        
+
         totalCosto += costoTotalItem;
         ventasPorDia[f.fecha].costo += costoTotalItem;
 
@@ -86,7 +88,6 @@ export function Reportes() {
         ventasPorProducto[item.descripcion].revenue += item.total;
         ventasPorProducto[item.descripcion].cost += costoTotalItem;
 
-        // Añadir a lista detallada
         listaVentasDetalladas.push({
           numero: f.numero,
           fecha: f.fecha,
@@ -108,7 +109,6 @@ export function Reportes() {
     const gananciaTotal = totalVentas - totalCosto;
     const ticketPromedio = filtradas.length > 0 ? totalVentas / filtradas.length : 0;
 
-    // Convert for charts
     const chartVentasDia = Object.keys(ventasPorDia).sort().map(day => ({
       fecha: day,
       Ventas: ventasPorDia[day].total,
@@ -124,61 +124,37 @@ export function Reportes() {
       gananciaTotal,
       itemsVendidos,
       ticketPromedio,
+      totalDescuentos,
+      totalEnvios,
       chartVentasDia,
       chartVentasProducto,
       tablaProductos: Object.values(ventasPorProducto).sort((a, b) => b.revenue - a.revenue),
       listaDetallada: listaVentasDetalladas.sort((a, b) => b.numero.localeCompare(a.numero)),
-      numFacturas: filtradas.length
+      numFacturas: filtradas.length,
+      facturasFiltradas: filtradas,
     };
   }, [facturas, productos, fechaInicio, fechaFin, filtroEstado]);
 
   function handleExport() {
-    // 1. Data for product breakdown
-    const productData = reportData.tablaProductos.map(p => ({
-      'Producto/Servicio': p.name,
-      'Cant. Vendida': p.quantity,
-      'Ingresos Brutos': p.revenue,
-      'Costo Estimado': p.cost,
-      'Utilidad Bruta': p.revenue - p.cost,
-      '% Margen': p.revenue > 0 ? (((p.revenue - p.cost) / p.revenue) * 100).toFixed(2) + '%' : '0%'
-    }));
+    const estadoLabel =
+      filtroEstado === 'activa' ? 'Solo activas' :
+      filtroEstado === 'anulada' ? 'Solo anuladas' : 'Todas';
 
-    // 2. Summary row for product table
-    const totals = {
-      'Producto/Servicio': 'TOTALES',
-      'Cant. Vendida': reportData.itemsVendidos,
-      'Ingresos Brutos': reportData.totalVentas,
-      'Costo Estimado': reportData.totalVentas - reportData.gananciaTotal,
-      'Utilidad Bruta': reportData.gananciaTotal,
-      '% Margen': reportData.totalVentas > 0 ? ((reportData.gananciaTotal / reportData.totalVentas) * 100).toFixed(2) + '%' : '0%'
-    };
-
-    const finalData = [...productData, {}, totals];
-
-    // 3. Detailed sales list (the new requirement)
-    const detailedData = reportData.listaDetallada.map(v => ({
-      'Factura #': v.numero,
-      'Fecha': v.fecha,
-      'Cliente': v.cliente,
-      'Producto': v.producto,
-      'Cant.': v.cantidad,
-      'Precio Venta': v.precio,
-      'Total Venta': v.total,
-      'Utilidad': v.utilidad
-    }));
-    
-    exportToExcel(finalData, `Reporte_Contabilidad_${fechaInicio}_a_${fechaFin}`, {
-      title: 'Reporte de Contabilidad - Space Lab',
-      subtitle: `Periodo: ${fechaInicio} al ${fechaFin}`,
-      summary: {
-        'Ventas Totales': formatCurrency(reportData.totalVentas),
-        'Utilidad Bruta Total': formatCurrency(reportData.gananciaTotal),
-        'Margen Promedio': reportData.totalVentas > 0 ? ((reportData.gananciaTotal / reportData.totalVentas) * 100).toFixed(2) + '%' : '0%',
-        'Total Facturas': reportData.numFacturas,
-        'Productos Vendidos': reportData.itemsVendidos
+    exportContabilidadDetallada(
+      reportData.facturasFiltradas,
+      {
+        totalVentas: reportData.totalVentas,
+        gananciaTotal: reportData.gananciaTotal,
+        itemsVendidos: reportData.itemsVendidos,
+        ticketPromedio: reportData.ticketPromedio,
+        numFacturas: reportData.numFacturas,
+        totalDescuentos: reportData.totalDescuentos,
+        totalEnvios: reportData.totalEnvios,
+        tablaProductos: reportData.tablaProductos,
       },
-      detail: detailedData // I'll update exportToExcel to handle this
-    });
+      { inicio: fechaInicio, fin: fechaFin, estado: estadoLabel },
+      `Reporte_Contabilidad_${fechaInicio}_a_${fechaFin}`
+    );
     toast.success('Reporte exportado exitosamente');
   }
 
