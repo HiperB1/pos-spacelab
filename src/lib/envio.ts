@@ -269,28 +269,26 @@ export async function cotizarEnvio(
       body: JSON.stringify({
         pickup_info: {
           city_code: ciudadOrigen,
-          country_code: 'CO',
-          postal_code: ''
+          country_code: 'CO'
         },
         shipping_info: {
           city_code: ciudadDestino,
           subdivision_code: subdivisionDestino || '',
-          country_code: 'CO',
-          postal_code: ''
+          country_code: 'CO'
         },
         line_items: [
           {
             sku: 'ITEM-001',
             name: 'Producto',
             unit_price: unitPrice,
-            free_shipping: false,
             height: 15,
             width: 20,
             length: 20,
             dimensions_unit: 'CM',
             weight: pesoKg || pesoDefault,
             weight_unit: 'KG',
-            quantity: 1
+            quantity: 1,
+            type: 'STANDARD'
           }
         ],
         payment_method_code: paymentMethodCode
