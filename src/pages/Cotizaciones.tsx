@@ -76,6 +76,7 @@ export function Cotizaciones() {
   const [cargandoEnvio, setCargandoEnvio] = useState(false);
   const [quotesDisponibles, setQuotesDisponibles] = useState<CotizacionEnvioResult[]>([]);
   const [quoteSeleccionado, setQuoteSeleccionado] = useState<CotizacionEnvioResult | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'EXTERNAL_PAYMENT'>('EXTERNAL_PAYMENT');
 
   useEffect(() => {
     loadData();
@@ -197,7 +198,7 @@ export function Cotizaciones() {
     setCargandoEnvio(true);
     try {
       const subtotalActual = items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
-      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino, 'EXTERNAL_PAYMENT', subtotalActual);
+      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino, paymentMethod, subtotalActual);
       setQuotesDisponibles(quotes);
       
       if (quotes.length > 0) {
@@ -276,6 +277,7 @@ export function Cotizaciones() {
     setCostoEnvio(0);
     setQuotesDisponibles([]);
     setQuoteSeleccionado(null);
+    setPaymentMethod('EXTERNAL_PAYMENT');
   }
 
   function handleCambiarEstado(id: string, nuevoEstado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida') {
@@ -489,22 +491,57 @@ export function Cotizaciones() {
                 </div>
                 
                 {ciudadDestino && (
-                  <div className="col-span-1 md:col-span-2">
-                    <Button 
-                      type="button"
-                      variant="secondary" 
-                      onClick={handleCotizarEnvio}
-                      disabled={cargandoEnvio || !ciudadDestino}
-                      className="w-full"
-                    >
-                      {cargandoEnvio ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Truck className="w-4 h-4 mr-2" />
-                      )}
-                      {cargandoEnvio ? 'Cotizando...' : 'Calcular Costo de Envío'}
-                    </Button>
-                  </div>
+                  <>
+                    <div className="col-span-1 md:col-span-2">
+                      <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                        <label className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 block">
+                          💳 Método de Pago
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setPaymentMethod('EXTERNAL_PAYMENT'); setCostoEnvio(0); setQuotesDisponibles([]); setQuoteSeleccionado(null); }}
+                            className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
+                              paymentMethod === 'EXTERNAL_PAYMENT'
+                                ? 'bg-primary/20 text-primary border border-primary/30'
+                                : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                            }`}
+                          >
+                            <span className="block font-bold">Ya Pagado</span>
+                            <span className="block text-[10px] opacity-70 mt-0.5">El cliente ya pagó por otro medio</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setPaymentMethod('COD'); setCostoEnvio(0); setQuotesDisponibles([]); setQuoteSeleccionado(null); }}
+                            className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors text-left ${
+                              paymentMethod === 'COD'
+                                ? 'bg-primary/20 text-primary border border-primary/30'
+                                : 'bg-white/5 text-white/60 hover:bg-white/10 border border-transparent'
+                            }`}
+                          >
+                            <span className="block font-bold">Contra Entrega</span>
+                            <span className="block text-[10px] opacity-70 mt-0.5">El transportador cobra al entregar</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-span-1 md:col-span-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleCotizarEnvio}
+                        disabled={cargandoEnvio || !ciudadDestino}
+                        className="w-full"
+                      >
+                        {cargandoEnvio ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Truck className="w-4 h-4 mr-2" />
+                        )}
+                        {cargandoEnvio ? 'Cotizando...' : 'Calcular Costo de Envío'}
+                      </Button>
+                    </div>
+                  </>
                 )}
                 
                 {quotesDisponibles.length > 0 && (
