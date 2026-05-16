@@ -16,6 +16,7 @@ import { Toaster, toast } from 'sonner';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { GlobalSearch } from './components/ui/GlobalSearch';
 import { KeyboardShortcutsGuide } from './components/ui/KeyboardShortcuts';
+import { ChangelogModal } from './components/ChangelogModal';
 import './components/styles.css';
 
 function AppContent() {
@@ -24,6 +25,15 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState('');
+
+  function handleCloseChangelog() {
+    if (currentVersion) {
+      localStorage.setItem('dg_last_version_seen', currentVersion);
+    }
+    setShowChangelog(false);
+  }
 
   useEffect(() => {
     console.log('[APP] Initializing database...');
@@ -36,6 +46,16 @@ function AppContent() {
       } finally {
         setLoading(false);
       }
+
+      try {
+        const { getVersion } = await import('@tauri-apps/api/app');
+        const v = await getVersion();
+        setCurrentVersion(v);
+        const lastSeen = localStorage.getItem('dg_last_version_seen');
+        if (lastSeen !== v) {
+          setShowChangelog(true);
+        }
+      } catch {}
 
       const config = getConfiguracion();
       if (config.api_key_venndelo && shouldAutoSync()) {
@@ -114,11 +134,13 @@ function AppContent() {
       )}
       
       {showShortcuts && (
-        <KeyboardShortcutsGuide 
-          open={showShortcuts} 
-          onClose={() => setShowShortcuts(false)} 
+        <KeyboardShortcutsGuide
+          open={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
         />
       )}
+
+      <ChangelogModal show={showChangelog} onClose={handleCloseChangelog} />
       
       <Toaster
         position="bottom-right"

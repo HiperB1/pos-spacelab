@@ -32,6 +32,7 @@ npm run tauri build   # Production desktop binary
 src/lib/
   database.ts             ← Central data store (localStorage key: dg_facturacion_db)
   types.ts                ← All TypeScript interfaces
+  changelog.ts            ← Release notes per version (edit here when bumping version)
   venndelo.ts             ← Venndelo API (orders, labels, product sync)
   envio.ts                ← Shipping quote logic
   facturas.ts             ← Factura-specific CRUD helpers
@@ -41,6 +42,7 @@ src/lib/
 
 src/context/NavigationContext.tsx  ← Tab-based routing state (not URL-based)
 src/components/Layout.tsx ← Sidebar nav + main content area
+src/components/ChangelogModal.tsx  ← Release notes modal (shown on first run after update)
 src/components/ui/        ← Button, Input, Select, Modal, Table, DataTable,
                              Badge, Card, GlobalSearch, KeyboardShortcuts
 src/pages/                ← Dashboard, Facturas, Cotizaciones, NotasCredito,
@@ -118,8 +120,11 @@ These system prompts auto-load when spawning subagents:
 
 ## Versioning Rules (before every push to `main`)
 
-Both files must be bumped together before pushing:
+Three things must be done together before pushing:
 - `package.json` → `version`
 - `src-tauri/tauri.conf.json` → `version`
+- `src/lib/changelog.ts` → add new entry at the top of the array with `novedades`, `mejoras`, `correcciones`
 
 Version progression: `0.1.X` → `0.1.30` → `0.2.0` (first major release), then semantic versioning.
+
+On first app launch after an update, `App.tsx` compares the installed version against `localStorage('dg_last_version_seen')` and shows `ChangelogModal` if they differ. The key is written when the user dismisses the modal.

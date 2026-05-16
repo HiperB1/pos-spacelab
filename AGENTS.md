@@ -73,14 +73,16 @@ npm run preview     # Vite preview
 ```
 src/
 ├── components/
-│   ├── ui/           # Button, Input, Select, Modal, Table, DataTable, Badge, Card
-│   ├── Layout.tsx    # Sidebar navigation + main content area
-│   └── styles.css    # Custom animations
+│   ├── ui/              # Button, Input, Select, Modal, Table, DataTable, Badge, Card
+│   ├── Layout.tsx       # Sidebar navigation + main content area
+│   ├── ChangelogModal.tsx  # Release notes modal (auto-shown after update)
+│   └── styles.css       # Custom animations
 ├── context/
 │   └── NavigationContext.tsx  # Tab state management
 ├── lib/
 │   ├── database.ts          # Central data store (localStorage)
 │   ├── types.ts            # TypeScript interfaces
+│   ├── changelog.ts        # Release notes per version (VersionNota[])
 │   ├── facturas.ts        # Factura CRUD
 │   ├── clientes.ts         # Cliente CRUD
 │   ├── productos.ts       # Producto CRUD
@@ -301,7 +303,9 @@ getSinStock()                           // Items with zero stock
 
 ### Storage Key
 ```
-dg_facturacion_db  →  JSON string of all collections
+dg_facturacion_db      →  JSON string of all collections
+dg_last_version_seen   →  version string last acknowledged by the user (e.g. "0.1.29")
+dg_last_update         →  ISO timestamp of last installed update
 ```
 
 ---
@@ -587,6 +591,8 @@ export function NewComponent({ className }: Props) {
 |------|---------|
 | `src/lib/database.ts` | Central data store - all CRUD operations |
 | `src/lib/types.ts` | TypeScript interfaces for all entities |
+| `src/lib/changelog.ts` | Release notes per version — edit here when bumping version |
+| `src/components/ChangelogModal.tsx` | Modal that shows release notes to the user |
 | `src/pages/Dashboard.tsx` | Analytics with recharts |
 | `src/pages/Facturas.tsx` | Factura creation & management |
 | `src/components/Layout.tsx` | Navigation sidebar |
@@ -600,19 +606,26 @@ export function NewComponent({ className }: Props) {
 
 ### Reglas para push a main
 
-1. **Verificar versión antes de push**: Antes de hacer `git push origin main`, siempre verificar que se haya aumentado la versión en:
-   - `package.json`
-   - `src-tauri/tauri.conf.json`
+1. **Tres archivos deben actualizarse juntos** antes de cada push:
+   - `package.json` → `version`
+   - `src-tauri/tauri.conf.json` → `version`
+   - `src/lib/changelog.ts` → agregar entrada al **inicio** del array con `version`, `fecha`, y las secciones `novedades`, `mejoras`, `correcciones` que apliquen
 
 2. **Progresión de versiones**:
    - Las versiones siguen el formato `0.1.X` hasta alcanzar `0.1.30`
-   - La versión `0.1.30` será seguida por `0.2.0` (首个 major release)
+   - La versión `0.1.30` será seguida por `0.2.0` (primer major release)
    - A partir de `0.2.0`, seguir semantic versioning (0.2.1, 0.2.2, ..., 0.3.0, etc.)
 
 3. **Flujo correcto para push**:
    ```bash
    # 1. Hacer cambios y commits
-   # 2. Verificar que package.json y tauri.conf.json tengan la nueva versión
-   # 3. git add -A && git commit -m "mensaje"
+   # 2. Actualizar package.json, tauri.conf.json y changelog.ts con la nueva versión
+   # 3. git add -A && git commit -m "chore: bump version to X.Y.Z"
    # 4. git push origin main
    ```
+
+4. **Cómo funciona el modal de novedades**:
+   - `App.tsx` compara la versión instalada contra `localStorage('dg_last_version_seen')` al iniciar
+   - Si difieren, muestra `ChangelogModal` con las notas de `changelog.ts`
+   - Al cerrar el modal se escribe la versión actual en `dg_last_version_seen`
+   - También accesible desde Configuración → "Ver novedades"

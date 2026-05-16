@@ -66,6 +66,7 @@
 | 📬 **Logística nacional** | Integración Venndelo: órdenes, guías de envío, tracking en tiempo real |
 | 📈 **Contabilidad** | Reportes avanzados, gráficos dinámicos (Recharts), exportación a Excel |
 | 🔄 **Auto-actualización** | Actualización automática vía Tauri updater al publicar nueva versión |
+| 📋 **Notas de actualización** | Modal automático al actualizar con novedades, mejoras y correcciones de cada versión |
 | 💾 **Backup** | Exportación e importación de copias de seguridad en formato JSON |
 
 </details>
@@ -195,14 +196,15 @@ pos-spacelab/
 │   │   └── Layout.tsx   # Sidebar + navegación
 │   ├── context/         # NavigationContext (tab-based routing)
 │   ├── lib/
-│   │   ├── database.ts  # Data store central (localStorage)
-│   │   ├── types.ts     # Interfaces TypeScript
-│   │   ├── facturas.ts  # CRUD facturas
-│   │   ├── clientes.ts  # CRUD clientes
-│   │   ├── productos.ts # CRUD productos
-│   │   ├── pdf.ts       # Generación PDF
-│   │   ├── export.ts    # Exportación Excel
-│   │   └── backup.ts    # Backup/restore JSON
+│   │   ├── database.ts   # Data store central (localStorage)
+│   │   ├── types.ts      # Interfaces TypeScript
+│   │   ├── changelog.ts  # Notas de actualización por versión
+│   │   ├── facturas.ts   # CRUD facturas
+│   │   ├── clientes.ts   # CRUD clientes
+│   │   ├── productos.ts  # CRUD productos
+│   │   ├── pdf.ts        # Generación PDF
+│   │   ├── export.ts     # Exportación Excel
+│   │   └── backup.ts     # Backup/restore JSON
 │   ├── pages/
 │   │   ├── Dashboard.tsx
 │   │   ├── Facturas.tsx
@@ -238,10 +240,13 @@ La aplicación verifica actualizaciones al iniciar usando el plugin `@tauri-apps
 ### Publicar una nueva versión
 
 ```bash
-# 1. Actualizar versión en src-tauri/tauri.conf.json
-# 2. Crear PR y hacer merge a release
-# 3. El workflow compila y publica automáticamente
+# 1. Actualizar versión en package.json y src-tauri/tauri.conf.json
+# 2. Agregar entrada en src/lib/changelog.ts con las novedades de la versión
+# 3. Crear PR y hacer merge a release
+# 4. El workflow compila y publica automáticamente
 ```
+
+Al instalar la nueva versión, la app muestra automáticamente un modal con las novedades. El usuario solo lo ve una vez; si quiere revisarlo luego puede hacerlo desde **Configuración → Ver novedades**.
 
 </details>
 

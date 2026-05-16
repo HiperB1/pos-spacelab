@@ -3,7 +3,8 @@ import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap } from 'lucide-react';
+import { ChangelogModal } from '../components/ChangelogModal';
+import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -12,6 +13,7 @@ export function ConfiguracionPage() {
   const [config, setConfig] = useState(() => getConfiguracion());
   const [saved, setSaved] = useState(false);
   const [appVersion, setAppVersion] = useState('');
+  const [showChangelog, setShowChangelog] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0 });
@@ -322,7 +324,16 @@ export function ConfiguracionPage() {
             <div className="card-body space-y-4">
               <div className="bg-surface p-4 rounded-xl border border-white/10">
                 <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Versión Actual</p>
-                <p className="text-2xl font-bold text-white">{appVersion || '...'}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-2xl font-bold text-white">{appVersion || '...'}</p>
+                  <button
+                    onClick={() => setShowChangelog(true)}
+                    className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Ver novedades
+                  </button>
+                </div>
               </div>
               
               <div className="bg-surface p-4 rounded-xl border border-white/10">
@@ -491,6 +502,8 @@ export function ConfiguracionPage() {
           </div>
         </div>
       </div>
+
+      <ChangelogModal show={showChangelog} onClose={() => setShowChangelog(false)} />
     </div>
   );
 }
