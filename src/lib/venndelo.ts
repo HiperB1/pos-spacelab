@@ -1,7 +1,30 @@
-import { getConfiguracion } from './database';
+import { getConfiguracion, getProdutos, addProduto, updateProductRow } from './database';
 import type { Factura } from './types';
 
 const VENNDELO_API_BASE = 'https://api.venndelo.com/v1/admin';
+const VENNDELO_LAST_SYNC_KEY = 'venndelo_products_last_sync';
+
+export interface ProductoVenndelo {
+  id: string;
+  sku?: string;
+  code?: string;
+  reference?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  unit_price?: number | string;
+  price?: number | string;
+  sale_price?: number | string;
+  base_price?: number | string;
+  regular_price?: number | string;
+  list_price?: number | string;
+  pricing?: { price?: number | string; sale_price?: number | string };
+  variants?: Array<{ price?: number | string; unit_price?: number | string }>;
+  variations?: Array<{ price?: number | string; compare_at_price?: number | string }>;
+  category?: string;
+  tags?: string[];
+  [key: string]: unknown;
+}
 
 export interface CiudadVenndelo {
   code: string;
@@ -15,6 +38,138 @@ export interface CiudadVenndelo {
 function getApiKey(): string | undefined {
   const config = getConfiguracion();
   return config.api_key_venndelo;
+}
+
+export async function getProductosVenndelo(): Promise<ProductoVenndelo[]> {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('API key de Venndelo no configurada');
+
+  const allProducts: ProductoVenndelo[] = [];
+  let pageToken = '';
+
+  do {
+    const url = `${VENNDELO_API_BASE}/products?page_size=100${pageToken ? `&page_token=${pageToken}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Venndelo-Api-Key': apiKey,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Venndelo /products error ${response.status}: ${errorText.substring(0, 200)}`);
+    }
+
+    const data = await response.json();
+    const items: ProductoVenndelo[] = data.items || [];
+    if (allProducts.length === 0 && items.length > 0) {
+      console.log('[venndelo] raw first product fields:', Object.keys(items[0]));
+      console.log('[venndelo] raw first product:', JSON.stringify(items[0]));
+    }
+    allProducts.push(...items);
+    pageToken = data.next_page_token || '';
+  } while (pageToken);
+
+  return allProducts;
+}
+
+function toNumber(val: unknown): number {
+  if (val === null || val === undefined) return 0;
+  const n = typeof val === 'string' ? parseFloat(val) : Number(val);
+  return isFinite(n) ? n : 0;
+}
+
+function extractPrice(v: ProductoVenndelo): number {
+  const candidates = [
+    v.unit_price,
+    v.price,
+    v.sale_price,
+    v.base_price,
+    v.regular_price,
+    v.list_price,
+    v.pricing?.price,
+    v.pricing?.sale_price,
+    v.variations?.[0]?.price,
+    v.variants?.[0]?.price,
+    v.variants?.[0]?.unit_price,
+  ];
+  for (const c of candidates) {
+    const n = toNumber(c);
+    if (n > 0) return n;
+  }
+  return 0;
+}
+
+function mapVenndeloProduct(v: ProductoVenndelo) {
+  return {
+    venndelo_id: v.id,
+    nome: v.name || v.title || `Producto ${v.id}`,
+    descripcion: v.description || '',
+    preco: extractPrice(v),
+    codigo: v.sku || v.code || v.reference || undefined,
+    categoria: v.category || undefined,
+    tags: Array.isArray(v.tags) && v.tags.length > 0 ? v.tags : undefined,
+  };
+}
+
+export async function sincronizarProductosVenndelo(): Promise<{
+  creados: number;
+  actualizados: number;
+  total: number;
+}> {
+  const remotos = await getProductosVenndelo();
+  const locales = getProdutos();
+
+  const byVenndeloId = new Map<string, typeof locales[0]>();
+  const byCodigo = new Map<string, typeof locales[0]>();
+  for (const p of locales) {
+    if (p.venndelo_id) byVenndeloId.set(p.venndelo_id, p);
+    if (p.codigo) byCodigo.set(p.codigo, p);
+  }
+
+  let creados = 0;
+  let actualizados = 0;
+
+  for (const remoto of remotos) {
+    const mapped = mapVenndeloProduct(remoto);
+    const existing =
+      byVenndeloId.get(remoto.id) ||
+      (mapped.codigo ? byCodigo.get(mapped.codigo) : undefined);
+
+    if (existing) {
+      updateProductRow(existing.id, {
+        venndelo_id: mapped.venndelo_id,
+        nome: mapped.nome,
+        descripcion: mapped.descripcion,
+        preco: mapped.preco,
+        codigo: mapped.codigo,
+        categoria: mapped.categoria,
+        tags: mapped.tags,
+      });
+      actualizados++;
+    } else {
+      addProduto({
+        ...mapped,
+        custo: 0,
+      });
+      creados++;
+    }
+  }
+
+  localStorage.setItem(VENNDELO_LAST_SYNC_KEY, new Date().toISOString());
+  return { creados, actualizados, total: remotos.length };
+}
+
+export function getVenndeloLastSync(): string | null {
+  return localStorage.getItem(VENNDELO_LAST_SYNC_KEY);
+}
+
+export function shouldAutoSync(): boolean {
+  const last = getVenndeloLastSync();
+  if (!last) return true;
+  return Date.now() - new Date(last).getTime() > 24 * 60 * 60 * 1000;
 }
 
 export async function getCiudades(): Promise<CiudadVenndelo[]> {
