@@ -101,14 +101,13 @@ export function exportContabilidadDetallada(
 
   const ws1 = XLSX.utils.aoa_to_sheet(resumenRows);
   ws1['!cols'] = [{ wch: 32 }, { wch: 28 }];
-  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
 
   // ─── HOJA 2: Facturas (una fila por factura) ───────────────────────────
   const facturaHeaders = [
     '# Factura', 'Fecha', 'Cliente', 'NIT / ID', 'Teléfono',
     'Tipo Pedido', 'Método Pago', 'Estado', 'Pagada',
     'Subtotal', 'Descuento', 'Costo Envío', 'TOTAL',
-    'N° Ítems', 'Ciudad Destino', 'Notas',
+    'Productos', 'N° Ítems', 'Ciudad Destino', 'Notas',
   ];
 
   const facturaRows = sorted.map(f => [
@@ -129,6 +128,7 @@ export function exportContabilidadDetallada(
     f.descuento || 0,
     f.costo_envio || 0,
     f.total,
+    f.items.map(i => `${i.descripcion} x${i.quantidade}`).join(' | '),
     f.items.length,
     f.ciudad_destino || '',
     f.notas || '',
@@ -140,6 +140,7 @@ export function exportContabilidadDetallada(
     sorted.reduce((s, f) => s + (f.descuento || 0), 0),
     sorted.reduce((s, f) => s + (f.costo_envio || 0), 0),
     sorted.reduce((s, f) => s + f.total, 0),
+    '',
     sorted.reduce((s, f) => s + f.items.length, 0),
     '', '',
   ];
@@ -150,10 +151,9 @@ export function exportContabilidadDetallada(
     { wch: 12 }, { wch: 12 }, { wch: 26 }, { wch: 16 }, { wch: 14 },
     { wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 8 },
     { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 },
-    { wch: 10 }, { wch: 20 }, { wch: 35 },
+    { wch: 50 }, { wch: 10 }, { wch: 20 }, { wch: 35 },
   ];
   applyCurrencyFormat(ws2, ws2Data, [9, 10, 11, 12]);
-  XLSX.utils.book_append_sheet(wb, ws2, 'Facturas');
 
   // ─── HOJA 3: Ítems por Factura ─────────────────────────────────────────
   const itemHeaders = [
@@ -190,7 +190,6 @@ export function exportContabilidadDetallada(
     { wch: 10 }, { wch: 16 }, { wch: 16 },
   ];
   applyCurrencyFormat(ws3, ws3Data, [5, 6]);
-  XLSX.utils.book_append_sheet(wb, ws3, 'Ítems por Factura');
 
   // ─── HOJA 4: Por Producto ──────────────────────────────────────────────
   const prodHeaders = [
@@ -221,6 +220,11 @@ export function exportContabilidadDetallada(
     { wch: 38 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 },
   ];
   applyCurrencyFormat(ws4, ws4Data, [2, 3, 4]);
+
+  // Orden de hojas: Facturas primero (activa al abrir), luego las demás
+  XLSX.utils.book_append_sheet(wb, ws2, 'Facturas');
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+  XLSX.utils.book_append_sheet(wb, ws3, 'Ítems por Factura');
   XLSX.utils.book_append_sheet(wb, ws4, 'Por Producto');
 
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
