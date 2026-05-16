@@ -62,7 +62,8 @@
 | 🧾 **Facturación** | PDF profesional, guías de envío, descuentos, búsqueda avanzada |
 | 📦 **Inventario 3 niveles** | Materias primas, subproductos, productos terminados con stock mínimo |
 | 🔧 **Ensamblaje** | Producción automática: descuenta componentes al armar productos finales |
-| 🚚 **Logística** | Gestión de domiciliarios, control de despachos, seguimiento de entregas |
+| 🚚 **Logística local** | Gestión de domiciliarios, control de despachos, seguimiento de entregas |
+| 📬 **Logística nacional** | Integración Venndelo: órdenes, guías de envío, tracking en tiempo real |
 | 📈 **Contabilidad** | Reportes avanzados, gráficos dinámicos (Recharts), exportación a Excel |
 | 🔄 **Auto-actualización** | Actualización automática vía Tauri updater al publicar nueva versión |
 | 💾 **Backup** | Exportación e importación de copias de seguridad en formato JSON |
