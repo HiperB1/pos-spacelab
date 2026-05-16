@@ -1,7 +1,7 @@
 # AGENTS.md - dg-facturacion
 
 > **Sistema de Facturación e Inventario para MySpace**  
-> Version: 0.1.16 | Last Updated: 2026-04-28
+> Version: 0.1.28 | Last Updated: 2026-05-16
 
 ---
 
@@ -10,16 +10,23 @@
 Aplicación de escritorio para **MySpace** (empresa de impresión 3D).
 
 ### Funcionalidad Principal
-- **Facturación**: Creación de facturas locales (no DIAN, uso interno), numeración secuencial automática,IVA 19%
-- **Inventario**: Control de materias primas (filamentos), subproductos, y productos terminados con stock mínimo
+- **Facturación**: Creación de facturas locales (no DIAN, uso interno), numeración secuencial automática, IVA siempre 0
+- **Inventario**: Control de materias primas (filamentos), subproductos, productos terminados y combos, con stock mínimo
 - **Ensamblaje**: Sistema de ensamblaje/desensamblaje de productos desde subproductos
+- **Cotizaciones**: Cotizaciones con cotización de envío en tiempo real via Venndelo
+- **Notas de Crédito**: Notas vinculadas a facturas con devolución de stock
+- **Pedidos**: Seguimiento de pedidos locales (domiciliarios) y nacionales (Venndelo)
+- **Logística**: Integración Venndelo — órdenes, guías de envío, tracking nacional
 - **Dashboard**: Analytics con gráficos de ventas y stock (recharts)
 - **Export**: PDF (pdfmake) y Excel (xlsx + file-saver)
 
-### Colecciones de Datos (8)
+### Colecciones de Datos (17)
 ```
-configuracion  | clientes  | materias_primas  | subproductos
-productos     | producto_componentes | facturas | factura_items
+configuracion     | clientes           | materias_primas     | subproductos
+productos         | producto_componentes| combos              | combo_items
+facturas          | factura_items      | cotizaciones        | cotizacion_items
+notas_credito     | nota_credito_items | pedidos             | domiciliarios
+abonos
 ```
 
 ---
@@ -85,16 +92,21 @@ src/
 │   ├── backup.ts         # Backup/restore
 │   └── toast.ts          # sonner wrapper
 ├── pages/
-│   ├── Dashboard.tsx         # Analytics charts
-│   ├── Inventario.tsx        # Tabs: MP, Subproductos, Productos
-│   ├── InventarioMP.tsx      # Materias primas management
+│   ├── Dashboard.tsx             # Analytics charts
+│   ├── Facturas.tsx              # Factura creation, list, Venndelo integration
+│   ├── Cotizaciones.tsx          # Cotizaciones con cotización de envío en tiempo real
+│   ├── NotasCredito.tsx          # Notas de crédito vinculadas a facturas
+│   ├── Pedidos.tsx               # Seguimiento de pedidos y domiciliarios
+│   ├── Reportes.tsx              # Reportes de ventas e inventario
+│   ├── Inventario.tsx            # Tab container: MP, Subproductos, Productos, Combos
+│   ├── InventarioMP.tsx
 │   ├── InventarioSubproductos.tsx
 │   ├── InventarioProductos.tsx
-│   ├── Disponibilidad.tsx   # Stock alerts & availability
-│   ├── Clientes.tsx         # Cliente management
-│   ├── Facturas.tsx         # Factura creation & list
-│   ├── HistorialInventario.tsx  # Movement audit
-│   └── ConfiguracionPage.tsx    # Company settings
+│   ├── InventarioCombos.tsx      # Gestión de combos de productos
+│   ├── Disponibilidad.tsx        # Stock alerts & availability
+│   ├── Clientes.tsx
+│   ├── HistorialInventario.tsx   # Movement audit trail
+│   └── Configuracion.tsx         # Company settings + Venndelo API key
 ├── App.tsx              # Main router & providers
 └── main.tsx            # Entry point
 
@@ -169,6 +181,7 @@ interface Produto {
   preco: number;
   custo: number;
   quantidade_stock?: number;  // Only if assembled
+  venndelo_id?: string;       // Venndelo product ID (populated on sync)
 }
 ```
 
@@ -192,14 +205,28 @@ interface Factura {
   cliente_celular: string;
   cliente_nit: string;
   cliente_direccion: string;
+  tipo_identificacion?: 'CC' | 'NIT';
   fecha: string;            // YYYY-MM-DD
   subtotal: number;
-  iva: number;             // subtotal * 0.19
+  iva: number;              // Always 0 in DB layer
   total: number;
   estado: 'activa' | 'anulada';
   notas?: string;
   motivo_anulacion?: string;
   fecha_anulacion?: string;
+  // Logistics
+  tipo_pedido?: 'local' | 'nacional';
+  ciudad_destino?: string;
+  costo_envio?: number;
+  payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
+  // Venndelo fields (populated after creating order)
+  venndelo_order_id?: string;
+  venndelo_tracking?: string;
+  venndelo_label_url?: string;
+  venndelo_label_local_path?: string;
+  venndelo_pin?: string;
+  venndelo_status?: string;
+  venndelo_shipment_created?: boolean;
 }
 ```
 
@@ -259,10 +286,17 @@ deleteSubproduto(id)
 deleteProductRow(id)
 
 // Special operations
-assembleProduto(produtoId, cantidad)    // Creates product from subproducts
-disadjustSubproductoStock(id, amount)  // Manual stock adjust
-getStockMinimo()                       // Items below threshold
-getSinStock()                        // Items with zero stock
+assembleProduto(produtoId, cantidad)       // Creates product from subproducts
+disassembleProduto(produtoId, cantidad)   // Disassembles back to subproducts
+adjustComboStock(comboId, amount)         // Adjust combo stock
+despacharFactura(facturaId)              // Mark factura as dispatched
+actualizarEstadoEntrega(facturaId, estado) // Update delivery state
+updateFacturaVenndelo(facturaId, data)   // Update Venndelo fields on factura
+getSaldosDomiciliarios()                 // Get delivery balances
+addAbono(data)                          // Add payment installment
+getAbonosDomiciliario(domiciliarioId)   // Get installments for driver
+getStockMinimo()                        // Items below threshold
+getSinStock()                           // Items with zero stock
 ```
 
 ### Storage Key
@@ -319,17 +353,47 @@ import { Input } from './components/ui/Input';
 
 ---
 
+## Venndelo Integration
+
+Logística de envíos nacionales. Full API reference in `.claude/agents/venndelo-expert.md`.
+
+### Config (stored in `configuracion`)
+- `api_key_venndelo` — API key
+- `ciudad_origen` — DANE city code (default: `11001000` = Bogotá)
+- `peso_default_kg` — default package weight (default: `0.5`)
+
+### Auto-sync
+On app start (`App.tsx`): if API key is set and 24h have passed since last sync, `sincronizarProductosVenndelo()` runs silently and updates `venndelo_id` on matching products.
+
+### Factura → Shipment flow
+1. `createOrder()` → saves `venndelo_order_id`, `pin`
+2. `createShipment()` if needed
+3. `generateLabel()` with up to 20 retries (2 s apart)
+4. Rust command `download_guide` saves PDF to `~/Documentos/MySpace/Guías/`
+5. `updateFacturaVenndelo()` persists all fields to localStorage
+
+### Key files
+- `src/lib/venndelo.ts` — API calls
+- `src/lib/envio.ts` — quote logic
+- `src-tauri/src/lib.rs` — `download_guide` Tauri command
+
+---
+
 ## Pages & Routes
 
 | Page | Route (Tab) | Purpose |
 |------|-------------|---------|
 | Dashboard | `dashboard` | Analytics: ventas mensuales, productos más vendidos, stock alerts |
-| Inventario | `inventario` | Tab navigation for: Materias Primas, Subproductos, Productos |
+| Facturas | `facturas` | Create/list facturas, Venndelo order & label creation |
+| Cotizaciones | `cotizaciones` | Cotizaciones con cotización de envío en tiempo real |
+| NotasCredito | `notas_credito` | Notas de crédito vinculadas a facturas |
+| Pedidos | `pedidos` | Seguimiento pedidos locales y nacionales, domiciliarios |
+| Reportes | `reportes` | Reportes de ventas e inventario |
+| Inventario | `inventario` | Tab container: MP, Subproductos, Productos, Combos |
 | Disponibilidad | `disponibilidad` | Alerts: stock mínimo, sin stock |
 | Clientes | `clientes` | CRUD clientes |
-| Facturas | `facturas` | Create/list facturas, estado tracking |
 | HistorialInventario | `historial` | Auditoría de movimientos de inventario |
-| Configuracion | `configuracion` | Empresa settings, numero facturación |
+| Configuracion | `configuracion` | Empresa settings, Venndelo API key, auto-updater |
 
 ### Navigation
 Uses custom `NavigationContext` - tab-based routing (not URL-based).
@@ -399,9 +463,9 @@ export function PageName() {
 3. **src-tauri/ ignored by Vite watcher** (`vite.config.ts:38-40`)
    - Expected behavior - Rust updates separately
 
-4. **IVA hardcoded at 19%**
-   - `database.ts:287` - `const iva = subtotal * 0.19;`
-   - Change here if tax rate changes
+4. **IVA is always 0**
+   - DB layer sets `iva = 0` — the `Factura.iva` field exists but is never calculated
+   - Do not assume 19%
 
 5. **No tests or lint configured**
    - TypeScript strict mode is the only verification
@@ -411,9 +475,9 @@ export function PageName() {
    - Ignore Docker files (`init.sql`)
    - Data persists in browser localStorage
 
-7. **Stock decreases on factura**
-   - Currently NOT implemented
-   - Need to add inventory movement tracking on sale
+7. **Stock adjustments on factura**
+   - Implemented via `despacharFactura()` and inventory movement functions
+   - Movements are audited in `inventario_movimientos` collection
 
 8. **Factura numbering**
    - Auto-increments on each `createFactura()`
