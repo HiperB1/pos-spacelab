@@ -304,6 +304,11 @@ export function Facturas() {
   }
 
   async function handleCotizarEnvio() {
+    const itemsValidos = items.filter(i => i.descripcion && i.quantidade > 0 && i.precio > 0);
+    if (itemsValidos.length === 0) {
+      toast.error('Agrega al menos un producto con precio antes de cotizar el envío.');
+      return;
+    }
     if (!ciudadDestino) return;
     const config = getConfiguracion();
     if (!config.api_key_venndelo) {

@@ -177,6 +177,12 @@ export function Cotizaciones() {
   }
 
   async function handleCotizarEnvio() {
+    const itemsValidos = items.filter((i: any) => i.descripcion && i.quantidade > 0 && i.precio > 0);
+    if (itemsValidos.length === 0) {
+      toast.error('Agrega al menos un producto con precio antes de cotizar el envío.');
+      return;
+    }
+
     if (!ciudadDestino) {
       toast.error('Selecciona una ciudad de destino');
       return;
@@ -184,13 +190,14 @@ export function Cotizaciones() {
 
     const config = getConfiguracion();
     if (!config.api_key_venndelo) {
-      toast.error(' API key de Venndelo no configurada. Configúrala en Configuración.');
+      toast.error('API key de Venndelo no configurada. Configúrala en Configuración.');
       return;
     }
 
     setCargandoEnvio(true);
     try {
-      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino);
+      const subtotalActual = items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
+      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino, 'EXTERNAL_PAYMENT', subtotalActual);
       setQuotesDisponibles(quotes);
       
       if (quotes.length > 0) {
@@ -450,11 +457,10 @@ export function Cotizaciones() {
               <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({...formData, cliente_direccion: e.target.value})} />
             </div>
             
-            {!formData.cliente_id && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
                 <div>
                   <Select
-                    label="Ciudad Destino (requerido para cotizaciones sin cliente)"
+                    label="Ciudad Destino"
                     value={ciudadDestino}
                     onChange={e => {
                       const code = e.target.value;
@@ -543,8 +549,7 @@ export function Cotizaciones() {
                   </div>
                 )}
               </div>
-            )}
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input 
                 label="Validez (días)" 
