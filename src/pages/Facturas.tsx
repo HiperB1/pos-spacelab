@@ -3,6 +3,7 @@ import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getCo
 import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
 import { getCiudades, createOrder, createShipment, generateLabel, getOrder, type CreateOrderResult } from '../lib/venndelo';
+import { cotizarEnvioSimple } from '../lib/envio';
 import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
@@ -40,6 +41,8 @@ interface Factura {
   cliente_nit: string;
   subtotal: number;
   iva: number;
+  descuento?: number;
+  costo_envio?: number;
   total: number;
   estado: string;
   notas?: string;
@@ -161,6 +164,9 @@ export function Facturas() {
     tracking: string;
   } | null>(null);
   const [creatingVenndelo, setCreatingVenndelo] = useState(false);
+  const [costoEnvio, setCostoEnvio] = useState(0);
+  const [cargandoEnvio, setCargandoEnvio] = useState(false);
+  const [envioCalculado, setEnvioCalculado] = useState(false);
   const [showVenndeloOrder, setShowVenndeloOrder] = useState(false);
   const [venndeloOrderInfo, setVenndeloOrderInfo] = useState<any>(null);
   const [venndeloOrderLoading, setVenndeloOrderLoading] = useState(false);
@@ -297,6 +303,28 @@ export function Facturas() {
     setItems(newItems);
   }
 
+  async function handleCotizarEnvio() {
+    if (!ciudadDestino) return;
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.error('API Key de Venndelo no configurada.');
+      return;
+    }
+    setCargandoEnvio(true);
+    try {
+      const ciudad = ciudades.find(c => c.code === ciudadDestino);
+      const precio = await cotizarEnvioSimple(ciudadDestino, 0.5);
+      setCostoEnvio(precio);
+      setEnvioCalculado(true);
+      toast.success(`Envío cotizado: ${formatCurrency(precio)}`);
+    } catch (e: any) {
+      const errMsg = e?.message || 'Error desconocido';
+      toast.error(`No se pudo cotizar el envío: ${errMsg}`);
+    } finally {
+      setCargandoEnvio(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validItems = items.filter(i => i.descripcion && i.quantidade > 0);
@@ -329,6 +357,7 @@ export function Facturas() {
         items: itemsParaGuardar,
         notas,
         descuento,
+        costo_envio: tipoPedido === 'nacional' ? costoEnvio : 0,
         tipo_pedido: tipoPedido,
         payment_method_code: paymentMethod,
         ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : ''
@@ -524,6 +553,8 @@ export function Facturas() {
     setTipoIdentificacion('CC');
     setPaymentMethod('EXTERNAL_PAYMENT');
     setCiudadDestino('');
+    setCostoEnvio(0);
+    setEnvioCalculado(false);
     setVenndeloResult(null);
     setShowVenndeloSuccess(false);
   }
@@ -777,7 +808,7 @@ export function Facturas() {
 
   const subtotal = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
   const iva = 0;
-  const total = subtotal - descuento;
+  const total = subtotal - descuento + costoEnvio;
 
   const columns: DataTableColumn<Factura>[] = useMemo(() => [
     { key: 'numero', header: 'Número', sortable: true, searchable: true },
@@ -975,7 +1006,7 @@ export function Facturas() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setTipoPedido('local')}
+                onClick={() => { setTipoPedido('local'); setCostoEnvio(0); setEnvioCalculado(false); }}
                 className={`flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors ${
                   tipoPedido === 'local'
                     ? 'bg-primary/20 text-primary border border-primary/30'
@@ -1027,7 +1058,7 @@ export function Facturas() {
                 <Select
                   label="Ciudad de Destino"
                   value={ciudadDestino}
-                  onChange={e => setCiudadDestino(e.target.value)}
+                  onChange={e => { setCiudadDestino(e.target.value); setCostoEnvio(0); setEnvioCalculado(false); }}
                   options={[
                     { value: '', label: 'Seleccionar ciudad...' },
                     ...ciudades.map(c => ({
@@ -1036,6 +1067,18 @@ export function Facturas() {
                     }))
                   ]}
                 />
+                {ciudadDestino && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCotizarEnvio}
+                    disabled={cargandoEnvio}
+                  >
+                    <Truck className={`w-4 h-4 mr-2 ${cargandoEnvio ? 'animate-pulse' : ''}`} />
+                    {cargandoEnvio ? 'Cotizando...' : envioCalculado ? `Envío: ${formatCurrency(costoEnvio)}` : 'Cotizar Envío'}
+                  </Button>
+                )}
                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                   <label className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 block">
                     💳 Método de Pago
@@ -1190,6 +1233,14 @@ export function Facturas() {
                 <span>Subtotal:</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
+              {tipoPedido === 'nacional' && (costoEnvio > 0 || cargandoEnvio) && (
+                <div className="flex justify-between text-white/40 text-sm">
+                  <span>Envío:</span>
+                  <span className={envioCalculado ? 'text-green-400' : 'text-white/20'}>
+                    {cargandoEnvio ? 'Calculando...' : formatCurrency(costoEnvio)}
+                  </span>
+                </div>
+              )}
               <div className="flex flex-col gap-1 pb-2 border-b border-white/5">
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Descuento Manual</label>
                 <div className="relative">

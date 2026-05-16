@@ -92,6 +92,7 @@ export interface Factura {
   subtotal: number;
   iva: number;
   descuento: number;
+  costo_envio?: number;
   total: number;
   estado: string;
   notas?: string;
