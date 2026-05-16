@@ -8,6 +8,14 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "0.1.29",
+    fecha: "2026-05-16",
+    novedades: [
+      "Sistema de notas de actualización: modal automático al recibir una nueva versión",
+      "Acceso al historial de versiones desde Configuración → Ver novedades",
+    ],
+  },
+  {
     version: "0.1.28",
     fecha: "2026-05-16",
     novedades: [
