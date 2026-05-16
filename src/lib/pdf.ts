@@ -150,6 +150,13 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
                 margin: [0, 0, 0, 5],
                 ...(factura.descuento > 0 ? {} : { opacity: 0 })
               },
+              ...(factura.costo_envio && factura.costo_envio > 0 ? [{
+                columns: [
+                  { text: 'ENVÍO', style: 'totalLabel' },
+                  { text: formatCurrency(factura.costo_envio), style: 'totalValue' }
+                ],
+                margin: [0, 0, 0, 5]
+              }] : []),
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [

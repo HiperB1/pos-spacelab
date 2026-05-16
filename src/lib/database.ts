@@ -344,8 +344,9 @@ export function createFactura(data: any): any {
   
   const subtotal = data.items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
   const descuento = data.descuento || 0;
+  const costoEnvio = data.costo_envio || 0;
   const iva = 0;
-  const total = subtotal - descuento;
+  const total = subtotal - descuento + costoEnvio;
   
   const factura: Factura = {
     id,
@@ -362,6 +363,7 @@ export function createFactura(data: any): any {
     subtotal,
     iva,
     descuento,
+    costo_envio: costoEnvio,
     total,
     estado: 'activa',
     notas: data.notas || '',
