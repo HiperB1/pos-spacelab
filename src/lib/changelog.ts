@@ -8,6 +8,20 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "0.1.30",
+    fecha: "2026-05-16",
+    correcciones: [
+      "Generación de PDFs y reportes Excel ahora funciona correctamente en macOS",
+      "Los archivos ya no se guardan como 'Unknown' sin extensión en macOS",
+      "El permiso de apertura de archivos locales (opener) estaba bloqueando la previsualización",
+    ],
+    mejoras: [
+      "Los archivos se guardan en Documentos/MySpace/PDFs y Documentos/MySpace/Reportes",
+      "El PDF o Excel se abre automáticamente tras generarse",
+      "Codificación base64 nativa: generación de archivos es ahora prácticamente instantánea",
+    ],
+  },
+  {
     version: "0.1.29",
     fecha: "2026-05-16",
     novedades: [
