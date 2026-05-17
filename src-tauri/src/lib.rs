@@ -1,4 +1,5 @@
 use std::fs;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -48,6 +49,19 @@ async fn download_guide(url: String, filename: String) -> Result<String, String>
     Ok(file_path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn save_file(filename: String, subfolder: String, data: String) -> Result<String, String> {
+    let bytes = STANDARD.decode(&data)
+        .map_err(|e| format!("Error al decodificar datos: {}", e))?;
+    let docs = dirs::document_dir()
+        .ok_or_else(|| "No se pudo encontrar la carpeta Documentos.".to_string())?;
+    let dir = docs.join("MySpace").join(&subfolder);
+    fs::create_dir_all(&dir).map_err(|e| format!("Error al crear carpeta: {}", e))?;
+    let file_path = dir.join(&filename);
+    fs::write(&file_path, &bytes).map_err(|e| format!("Error al guardar archivo: {}", e))?;
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     eprintln!("[RUST] Starting Tauri application...");
@@ -55,7 +69,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![greet, download_guide])
+        .invoke_handler(tauri::generate_handler![greet, download_guide, save_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
