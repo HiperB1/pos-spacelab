@@ -1,70 +1,79 @@
-# AGENTS.md - dg-facturacion
+# AGENTS.md - SpaceLab POS
 
 > **Sistema de Facturación e Inventario para MySpace**  
-> Version: 0.1.28 | Last Updated: 2026-05-16
+> Version: 0.1.29 | Last Updated: 2026-05-16
 
 ---
 
 ## Overview
 
-Aplicación de escritorio para **MySpace** (empresa de impresión 3D).
+Aplicación de escritorio para **MySpace** (empresa de impresión 3D), construida con Tauri v2 + React 19 + TypeScript + Rust. Toda la persistencia es en `localStorage` — sin base de datos externa.
 
 ### Funcionalidad Principal
-- **Facturación**: Creación de facturas locales (no DIAN, uso interno), numeración secuencial automática, IVA siempre 0
-- **Inventario**: Control de materias primas (filamentos), subproductos, productos terminados y combos, con stock mínimo
-- **Ensamblaje**: Sistema de ensamblaje/desensamblaje de productos desde subproductos
-- **Cotizaciones**: Cotizaciones con cotización de envío en tiempo real via Venndelo
-- **Notas de Crédito**: Notas vinculadas a facturas con devolución de stock
-- **Pedidos**: Seguimiento de pedidos locales (domiciliarios) y nacionales (Venndelo)
-- **Logística**: Integración Venndelo — órdenes, guías de envío, tracking nacional
-- **Dashboard**: Analytics con gráficos de ventas y stock (recharts)
-- **Export**: PDF (pdfmake) y Excel (xlsx + file-saver)
 
-### Colecciones de Datos (17)
+| Módulo | Descripción |
+|--------|-------------|
+| **Facturación** | Facturas internas (no DIAN), numeración secuencial, PDF pdfmake, IVA siempre 0 |
+| **Inventario** | 3 niveles: materias primas (kg) → subproductos (unidades) → productos terminados |
+| **Ensamblaje** | Armar/desarmar productos: consume subproductos, agrega al stock del producto |
+| **Combos** | Agrupaciones de productos con su propio stock |
+| **Cotizaciones** | Con cotización de envío en tiempo real via Venndelo API |
+| **Notas de Crédito** | Vinculadas a facturas; revierten stock al emitirse |
+| **Pedidos** | Seguimiento de pedidos locales (domiciliarios) y nacionales (Venndelo) |
+| **Logística nacional** | Venndelo: crear orden, crear envío, generar guía (label PDF), tracking |
+| **Domiciliarios** | Control de repartos locales, saldos pendientes, abonos |
+| **Dashboard** | Analytics con recharts: ventas mensuales, productos más vendidos, stock alerts |
+| **Reportes** | Exportación Excel detallada (4 hojas: Facturas, Resumen, Ítems, Por Producto) |
+| **Backup** | Exportar/importar JSON con todas las colecciones |
+
+### Colecciones de Datos (localStorage)
+
 ```
-configuracion     | clientes           | materias_primas     | subproductos
-productos         | producto_componentes| combos              | combo_items
-facturas          | factura_items      | cotizaciones        | cotizacion_items
-notas_credito     | nota_credito_items | pedidos             | domiciliarios
-abonos
+configuracion       | clientes            | materias_primas      | subproductos
+productos           | producto_componentes| combos               | facturas
+factura_items       | cotizaciones        | cotizacion_items     | notas_credito
+nota_credito_items  | domiciliarios       | abonos
 ```
+
+Todo se persiste en una sola clave: `dg_facturacion_db`.  
+Los movimientos de inventario usan una clave separada: `dg_facturacion_movimientos`.
 
 ---
 
 ## Tech Stack
 
-| Paquete | Version | Uso |
+| Paquete | Versión | Uso |
 |--------|---------|-----|
 | react | ^19.1.0 | UI Framework |
-| react-router-dom | ^7.14.2 | Routing |
-| typescript | ~5.8.3 | Type safety |
-| tailwindcss | ^4.2.4 | Styling |
+| typescript | ~5.8.3 | Tipado estático |
+| tailwindcss | ^4.2.4 | Estilos |
 | lucide-react | ^1.11.0 | Iconos |
 | recharts | ^3.8.1 | Gráficos analytics |
 | sonner | ^2.0.7 | Notificaciones toast |
 | pdfmake | ^0.2.7 | Generación PDFs |
 | xlsx | ^0.18.5 | Export Excel |
-| file-saver | ^2.0.5 | Download archivos |
-| uuid | ^14.0.0 | IDs únicos |
-| @tauri-apps/api | ^2 | Desktop bindings |
-| @tauri-apps/plugin-shell | ^2.3.5 | Shell commands |
+| file-saver | ^2.0.5 | Descarga de archivos |
+| @tauri-apps/api | ^2.11.0 | Desktop bindings |
+| @tauri-apps/plugin-updater | ^2.10.1 | Auto-actualización |
+| @tauri-apps/plugin-shell | ^2.3.5 | Shell commands (download_guide) |
+| react-router-dom | ^7.14.2 | Instalado pero **no se usa** — la navegación usa `NavigationContext` |
+| uuid | ^14.0.0 | Instalado pero **no se usa** — se usa `crypto.randomUUID()` nativamente |
 
 ---
 
 ## Commands
 
 ```bash
-# Development
-npm run dev           # Vite dev server (port 1420)
-npm run tauri dev    # Full dev con Rust backend hot-reload
+# Desarrollo
+npm run dev           # Vite dev server (puerto 1420) — sin Tauri
+npm run tauri dev     # Desarrollo completo con Rust hot-reload (usar esto)
 
 # Build
-npm run build        # tsc && vite build
-npm run tauri build # Production desktop binary (.exe)
-
-# Utils
-npm run preview     # Vite preview
+npm run build         # tsc + vite build (verificación de tipos)
+npm run tauri build   # Binario de producción (.AppImage, .exe)
 ```
+
+**Sin suite de tests ni linter.** `npm run build` es la única verificación disponible.
 
 ---
 
@@ -73,174 +82,292 @@ npm run preview     # Vite preview
 ```
 src/
 ├── components/
-│   ├── ui/              # Button, Input, Select, Modal, Table, DataTable, Badge, Card
-│   ├── Layout.tsx       # Sidebar navigation + main content area
-│   ├── ChangelogModal.tsx  # Release notes modal (auto-shown after update)
-│   └── styles.css       # Custom animations
+│   ├── ui/
+│   │   ├── Button.tsx         # Variantes: primary, secondary, ghost, danger
+│   │   ├── Input.tsx          # Con soporte de label y error
+│   │   ├── Select.tsx
+│   │   ├── Modal.tsx
+│   │   ├── Table.tsx          # Tabla simple
+│   │   ├── DataTable.tsx      # Tabla con búsqueda y paginación
+│   │   ├── Badge.tsx          # Estado de entidad
+│   │   ├── Card.tsx
+│   │   ├── GlobalSearch.tsx   # Búsqueda global (Ctrl+K)
+│   │   └── KeyboardShortcuts.tsx
+│   ├── Layout.tsx             # Sidebar colapsable + área de contenido
+│   ├── ChangelogModal.tsx     # Modal de novedades (auto-mostrado al actualizar)
+│   └── styles.css             # Animaciones custom
 ├── context/
-│   └── NavigationContext.tsx  # Tab state management
+│   └── NavigationContext.tsx  # Estado de tab activo (reemplaza react-router)
 ├── lib/
-│   ├── database.ts          # Central data store (localStorage)
-│   ├── types.ts            # TypeScript interfaces
-│   ├── changelog.ts        # Release notes per version (VersionNota[])
-│   ├── facturas.ts        # Factura CRUD
-│   ├── clientes.ts         # Cliente CRUD
-│   ├── productos.ts       # Producto CRUD
-│   ├── subproductos.ts    # Subproducto CRUD
-│   ├── materias_primas.ts  # MateriaPrima CRUD
-│   ├── inventarioMovimientos.ts  # Audit trail
-│   ├── pdf.ts            # PDF generation
-│   ├── export.ts         # Excel export
-│   ├── backup.ts         # Backup/restore
-│   └── toast.ts          # sonner wrapper
+│   ├── database.ts            # Store central — todas las operaciones CRUD
+│   ├── types.ts               # Interfaces TypeScript de todas las entidades
+│   ├── changelog.ts           # Notas de versión (VersionNota[]); editar al versionar
+│   ├── venndelo.ts            # API Venndelo: productos, ciudades, órdenes, guías
+│   ├── envio.ts               # Cotización de envío vía Venndelo + lista de ciudades
+│   ├── facturas.ts            # Thin wrapper sobre database.ts para facturas
+│   ├── inventarioMovimientos.ts # Auditoría de movimientos (clave separada en LS)
+│   ├── materias_primas.ts     # CRUD materias primas
+│   ├── productos.ts           # CRUD productos
+│   ├── subproductos.ts        # CRUD subproductos
+│   ├── pdf.ts                 # Generación PDF de facturas y cotizaciones (pdfmake)
+│   ├── export.ts              # Exportación Excel detallada (xlsx, 4 hojas)
+│   ├── backup.ts              # Backup/restore JSON de toda la DB
+│   └── toast.ts               # Wrapper de sonner
 ├── pages/
-│   ├── Dashboard.tsx             # Analytics charts
-│   ├── Facturas.tsx              # Factura creation, list, Venndelo integration
-│   ├── Cotizaciones.tsx          # Cotizaciones con cotización de envío en tiempo real
-│   ├── NotasCredito.tsx          # Notas de crédito vinculadas a facturas
-│   ├── Pedidos.tsx               # Seguimiento de pedidos y domiciliarios
-│   ├── Reportes.tsx              # Reportes de ventas e inventario
-│   ├── Inventario.tsx            # Tab container: MP, Subproductos, Productos, Combos
-│   ├── InventarioMP.tsx
+│   ├── Dashboard.tsx          # Analytics: ventas, productos top, stock alerts
+│   ├── Facturas.tsx           # CRUD facturas + flujo Venndelo (orden → guía)
+│   ├── Cotizaciones.tsx       # Cotizaciones con cotización de envío en tiempo real
+│   ├── NotasCredito.tsx       # Notas de crédito vinculadas a facturas
+│   ├── Pedidos.tsx            # Seguimiento pedidos locales y nacionales; domiciliarios
+│   ├── Reportes.tsx           # Reportes contables + exportación Excel
+│   ├── Inventario.tsx         # Contenedor de 4 tabs de inventario
+│   ├── InventarioMP.tsx       # Materias primas (kg, proveedor, stock mínimo)
 │   ├── InventarioSubproductos.tsx
-│   ├── InventarioProductos.tsx
-│   ├── InventarioCombos.tsx      # Gestión de combos de productos
-│   ├── Disponibilidad.tsx        # Stock alerts & availability
-│   ├── Clientes.tsx
-│   ├── HistorialInventario.tsx   # Movement audit trail
-│   └── Configuracion.tsx         # Company settings + Venndelo API key
-├── App.tsx              # Main router & providers
-└── main.tsx            # Entry point
+│   ├── InventarioProductos.tsx # Ensamblaje/desensamblaje
+│   ├── InventarioCombos.tsx   # Gestión de combos
+│   ├── Disponibilidad.tsx     # Alertas de stock bajo o cero
+│   ├── HistorialInventario.tsx # Auditoría de movimientos
+│   └── Configuracion.tsx      # Datos empresa, API key Venndelo, auto-updater
+├── App.tsx                    # Bootstrap: initDatabase, auto-sync Venndelo, shortcuts
+└── main.tsx                   # Entry point React
 
-src-tauri/               # Rust backend (minimal)
-├── src/main.rs
-└── tauri.conf.json     # Window, CSP, bundle config
+src-tauri/
+├── src/lib.rs                 # Comandos Rust: download_guide (guarda PDFs de guías)
+├── capabilities/default.json  # Permisos Tauri (fs, shell, http, updater)
+└── tauri.conf.json            # Ventana, CSP, bundling, update endpoint
 ```
 
 ---
 
 ## Data Model
 
-### 1. Configuracion
+### Configuracion
 ```typescript
 interface Configuracion {
-  id: number;              // Always 1
-  prefijo: string;         // e.g., "DG-"
+  id: number;              // Siempre 1 (singleton)
+  prefijo: string;         // e.g., "DG-" — prefijo de numeración
   empresa_nome: string;
   empresa_nit: string;
   empresa_direccion: string;
   empresa_telefono: string;
   empresa_email: string;
-  siguiente_numero: number;  // Auto-increment on each factura
+  siguiente_numero: number;              // Autoincremental por cada factura creada
+  siguiente_numero_cotizacion?: number;
+  siguiente_numero_nota_credito?: number;
+  meta_mensual?: number;
+  dias_laborables?: number;
+  api_key_venndelo?: string;
+  ciudad_origen?: string;    // Código DANE, default: '11001000' (Bogotá)
+  peso_default_kg?: number;  // Peso por defecto para cotizar envíos
 }
 ```
 
-### 2. Cliente
-```typescript
-interface Cliente {
-  id: string;          // crypto.randomUUID()
-  nome: string;
-  nit: string;
-  direccion: string;
-  telefono: string;
-  email: string;
-  created_at?: string;
-}
-```
-
-### 3. MateriaPrima
+### MateriaPrima
 ```typescript
 interface MateriaPrima {
   id: string;
+  codigo?: string;
   nome: string;
-  tipo: string;           // e.g., "PLA", "PETG", "ABS"
+  tipo: string;            // e.g., "PLA", "PETG", "ABS"
   color: string;
   fornecedor: string;
-  quantidade_kg: number;
-  preco_kg: number;
-  stock_minimo?: number;  // Alert threshold
+  quantidade_kg: number;   // Stock actual en kilogramos
+  preco_kg: number;        // Costo por kilogramo
+  stock_minimo?: number;   // Umbral de alerta (mismo en kg)
 }
 ```
 
-### 4. Subproducto
+### Subproducto
 ```typescript
 interface Subproducto {
   id: string;
+  codigo?: string;
   nome: string;
   tipo: string;
-  quantidade: number;     // Current stock
+  quantidade: number;    // Stock actual en unidades
   custo: number;
   stock_minimo?: number;
 }
 ```
 
-### 5. Produto
+### Produto (Producto Terminado)
 ```typescript
 interface Produto {
   id: string;
+  codigo?: string;
   nome: string;
   descripcion: string;
-  preco: number;
-  custo: number;
-  quantidade_stock?: number;  // Only if assembled
-  venndelo_id?: string;       // Venndelo product ID (populated on sync)
+  categoria?: string;
+  tags?: string[];
+  preco: number;           // Precio de venta
+  custo: number;           // Costo estimado
+  quantidade_stock?: number; // Stock actual (solo si fue ensamblado)
+  venndelo_id?: string;    // ID en catálogo Venndelo (poblado por auto-sync)
 }
 ```
 
-### 6. ProductoComponente
+### ProductoComponente (Receta de Ensamblaje)
 ```typescript
+// Relación: produto_id → subproduto_id con cantidad requerida por unidad
 interface ProdutoComponente {
   id: string;
   produto_id: string;
   subproduto_id: string;
-  quantidade_necesaria: number;  // Required per unit
+  quantidade_necesaria: number;
 }
 ```
 
-### 7. Factura
+### Combo
+```typescript
+interface Combo {
+  id: string;
+  nome: string;
+  descripcion: string;
+  productos: ComboProducto[];  // Lista de { produto_id, quantidade }
+  preco: number;
+  quantidade_stock: number;
+  stock_minimo?: number;
+  activo: boolean;  // Soft delete: deleteCombo() solo pone activo=false
+  created_at?: string;
+}
+```
+
+### Factura
 ```typescript
 interface Factura {
   id: string;
-  numero: string;           // e.g., "DG-00001"
+  numero: string;          // Formato: "{prefijo}{N:05}" e.g. "DG-00001"
   cliente_id: string;
   cliente_nome: string;
+  cliente_apellido?: string;
   cliente_celular: string;
+  cliente_email?: string;
   cliente_nit: string;
+  tipo_identificacion?: string; // 'CC' | 'NIT'
   cliente_direccion: string;
-  tipo_identificacion?: 'CC' | 'NIT';
-  fecha: string;            // YYYY-MM-DD
+  fecha: string;           // YYYY-MM-DD
   subtotal: number;
-  iva: number;              // Always 0 in DB layer
-  total: number;
+  iva: number;             // SIEMPRE 0 — no se calcula IVA en esta aplicación
+  descuento: number;
+  costo_envio?: number;
+  total: number;           // subtotal - descuento + costo_envio
   estado: 'activa' | 'anulada';
   notas?: string;
   motivo_anulacion?: string;
   fecha_anulacion?: string;
-  // Logistics
+
+  // Tipo de pedido
   tipo_pedido?: 'local' | 'nacional';
-  ciudad_destino?: string;
-  costo_envio?: number;
   payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
-  // Venndelo fields (populated after creating order)
+  ciudad_destino?: string; // Código DANE (solo pedidos nacionales)
+
+  // Campos Venndelo (se llenan tras crear orden en Venndelo)
   venndelo_order_id?: string;
   venndelo_tracking?: string;
   venndelo_label_url?: string;
-  venndelo_label_local_path?: string;
   venndelo_pin?: string;
   venndelo_status?: string;
   venndelo_shipment_created?: boolean;
+  venndelo_label_local_path?: string; // Ruta local del PDF de guía descargado
+
+  // Pipeline de entrega
+  estado_entrega?:
+    | 'pendiente'       // Recibido, esperando validación
+    | 'en_validacion'   // Verificando stock
+    | 'en_produccion'   // Siendo impreso
+    | 'en_acabado'      // Post-proceso terminado
+    | 'en_despacho'     // Con domiciliario
+    | 'entregado'       // Completado
+    | 'devuelto'        // Con problema
+    | 'cancelado';      // Por cliente
+  domiciliario_id?: string;
+  domiciliario_nome?: string;
+  fecha_despacho?: string;
+  fecha_entrega?: string;
+  pagada?: boolean;
 }
 ```
 
-### 8. FacturaItem
+### Cotizacion
 ```typescript
-interface FacturaItem {
+interface Cotizacion {
   id: string;
-  factura_id: string;
-  descripcion: string;
-  quantidade: number;
-  precio: number;
-  total: number;            // quantidade * precio
+  numero: string;          // "{prefijo}COT-{N:05}"
+  cliente_id?: string;
+  cliente_nome: string;
+  cliente_celular: string;
+  cliente_nit: string;
+  cliente_direccion: string;
+  ciudad?: string;
+  fecha: string;
+  fecha_vencimiento: string;
+  validez_dias: number;    // Default 15
+  subtotal: number;
+  iva: number;             // Siempre 0
+  descuento: number;
+  costo_envio: number;     // Cotizado via Venndelo en tiempo real
+  total: number;
+  estado: 'abierta' | 'aprobada' | 'rechazada' | 'vencida';
+  notas?: string;
+}
+```
+
+### NotaCredito
+```typescript
+interface NotaCredito {
+  id: string;
+  numero: string;           // "{prefijo}NC-{N:05}"
+  factura_afectada_id: string;
+  factura_numero: string;
+  cliente_nome: string;
+  cliente_nit: string;
+  cliente_direccion: string;
+  fecha: string;
+  subtotal: number;
+  iva: number;              // Siempre 0
+  descuento: number;
+  total: number;
+  motivo: string;
+  observaciones?: string;
+}
+```
+
+### Domiciliario & Abono
+```typescript
+interface Domiciliario {
+  id: string;
+  nome: string;
+  telefono: string;
+  placa?: string;
+  activo: boolean;
+}
+
+interface Abono {
+  id: string;
+  domiciliario_id: string;
+  monto: number;
+  fecha: string;
+  nota?: string;
+  comprobante?: string;
+}
+```
+
+### InventarioMovimiento (clave separada)
+```typescript
+// Guardado en localStorage('dg_facturacion_movimientos'), NO en dg_facturacion_db
+interface InventarioMovimiento {
+  id: string;
+  tipo: 'entrada' | 'salida' | 'ajuste';
+  tabla: 'materias_primas' | 'subproductos' | 'productos' | 'combos';
+  registro_id: string;
+  registro_nombre: string;
+  campo: string;
+  valor_anterior: string | number;
+  valor_nuevo: string | number;
+  cantidad?: number;
+  observaciones: string;
+  usuario: string;
+  created_at: string;
 }
 ```
 
@@ -248,384 +375,336 @@ interface FacturaItem {
 
 ## Database Layer
 
-### Pattern
-All data access goes through `src/lib/database.ts`. It uses **localStorage** (not SQL).
+### Clave de almacenamiento
+
+| Clave localStorage | Contenido |
+|--------------------|-----------|
+| `dg_facturacion_db` | JSON con todas las colecciones (singleton) |
+| `dg_facturacion_movimientos` | Array de InventarioMovimiento (clave separada) |
+| `dg_last_version_seen` | Última versión de la app que el usuario reconoció |
+| `dg_last_update` | Timestamp ISO de la última actualización instalada |
+| `venndelo_products_last_sync` | Timestamp ISO del último auto-sync de productos Venndelo |
+
+### API de `database.ts`
 
 ```typescript
-// Initialize on app start
+// Bootstrap — llamar en App.tsx antes de renderizar
 await initDatabase();
 
-// Get all
-getClientes()           // returns Cliente[]
-getMateriasPrimas()     // returns MateriaPrima[]
-getSubproductos()
-getProdutos()
-getFacturas()          // returns Factura[] with items embedded
+// Configuración (singleton)
+getConfiguracion()           → Configuracion
+updateConfiguracion(partial) → void
 
-// Get single
-getCliente(id)        // returns Cliente | undefined
-getSubproduto(id)
-getProduto(id)
-getFactura(id)        // returns Factura with items
+// Clientes
+getClientes()                → Cliente[]
+getCliente(id)               → Cliente | undefined
+addCliente(data)             → Cliente
+updateCliente(id, data)      → void
+deleteCliente(id)            → void
 
-// Create (returns created object with id)
-addCliente(data)
-addMateriaPrima(data)
-addSubproduto(data)
-addProduto(data)
-createFactura(data)
+// Materias Primas
+getMateriasPrimas()          → MateriaPrima[]
+addMateriaPrima(data)        → MateriaPrima
+updateMateriaPrima(id, data) → void
+deleteMateriaPrima(id)       → void
 
-// Update
-updateCliente(id, data)
-updateMateriaPrima(id, data)
-updateSubproduto(id, data)
-updateProductRow(id, data)
+// Subproductos
+getSubproductos()            → Subproducto[]
+getSubproduto(id)            → Subproducto | undefined
+addSubproduto(data)          → Subproducto
+updateSubproduto(id, data)   → void
+deleteSubproduto(id)         → void
 
-// Delete
-deleteCliente(id)
-deleteMateriaPrima(id)
-deleteSubproduto(id)
-deleteProductRow(id)
+// Productos
+getProdutos()                → Produto[]
+getProduto(id)               → Produto | undefined
+addProduto(data)             → Produto
+updateProductRow(id, data)   → void
+deleteProductRow(id)         → void  // También elimina sus componentes
 
-// Special operations
-assembleProduto(produtoId, cantidad)       // Creates product from subproducts
-disassembleProduto(produtoId, cantidad)   // Disassembles back to subproducts
-adjustComboStock(comboId, amount)         // Adjust combo stock
-despacharFactura(facturaId)              // Mark factura as dispatched
-actualizarEstadoEntrega(facturaId, estado) // Update delivery state
-updateFacturaVenndelo(facturaId, data)   // Update Venndelo fields on factura
-getSaldosDomiciliarios()                 // Get delivery balances
-addAbono(data)                          // Add payment installment
-getAbonosDomiciliario(domiciliarioId)   // Get installments for driver
-getStockMinimo()                        // Items below threshold
-getSinStock()                           // Items with zero stock
-```
+// Componentes (receta de ensamblaje)
+getComponentes(produtoId)    → ComponenteConNombre[]
+addComponente(prodId, subprodId, cantidad) → void
+removeComponente(id)         → void
 
-### Storage Key
-```
-dg_facturacion_db      →  JSON string of all collections
-dg_last_version_seen   →  version string last acknowledged by the user (e.g. "0.1.29")
-dg_last_update         →  ISO timestamp of last installed update
-```
+// Ensamblaje / Desensamblaje
+assembleProduto(produtoId, cantidad)    → { success, message }
+disassembleProduto(produtoId, cantidad) → { success, message }
 
----
+// Combos
+getCombos(includeInactive?)  → Combo[]   // Por default filtra activos
+getCombo(id)                 → Combo | undefined
+addCombo(data)               → Combo
+updateCombo(id, data)        → void
+deleteCombo(id)              → void      // Soft delete: activo = false
+adjustComboStock(id, amount) → void
 
-## UI Components
+// Ajustes de stock directo
+adjustSubproductoStock(id, amount) → boolean  // false si quedaría negativo
+adjustProdutoStock(id, amount)     → boolean
 
-### Available in `src/components/ui/`
+// Facturas
+getFacturas()                → (Factura & { items: FacturaItem[] })[]
+getFactura(id)               → (Factura & { items }) | undefined
+createFactura(data)          → Factura & { items }   // Decrementa stock al crear
+anularFactura(id, motivo)    → void                  // Restaura stock al anular
+updateFacturaVenndelo(id, campos) → void
+getSiguienteNumero()         → string   // e.g., "DG-00042"
 
-| Component | Props | Usage |
-|-----------|-------|-------|
-| **Button** | `variant?`, `size?`, `disabled?`, `loading?` | Primary actions |
-| **Input** | `type?`, `error?`, `label?` | Form fields |
-| **Select** | `options`, `value`, `onChange`, `label` | Dropdowns |
-| **Modal** | `open`, `onClose`, `title` | Dialogs |
-| **Table** | `columns`, `data`, `onRowClick` | Data tables |
-| **DataTable** | Enhanced table with search/pagination | Advanced tables |
-| **Badge** | `variant?` | Status indicators |
-| **Card** | `title?`, `children` | Content containers |
+// Seguimiento de entregas
+despacharFactura(id, domiciliarioId) → void  // → estado_entrega: 'en_despacho'
+actualizarEstadoEntrega(id, estado)  → void
+marcarFacturaPagada(facturaId)       → void  // Toggle pagada/no pagada
 
-### Theme Colors
+// Domiciliarios & Abonos
+getDomiciliarios()                          → Domiciliario[]
+addDomiciliario(data)                       → Domiciliario
+updateDomiciliario(id, data)                → void
+deleteDomiciliario(id)                      → void
+getSaldosDomiciliarios()                    → SaldoDomiciliario[]
+getFacturasDomiciliario(domiciliarioId)     → Factura[]
+addAbono(data)                              → Abono
+getAbonosDomiciliario(domiciliarioId)       → Abono[]
 
-```css
-/* Tailwind classes */
-bg-background    /* #1a1a2e */
-bg-surface       /* #2d2d4a */
-bg-surface-hover /* #3d3d5c */
-text-primary     /* #ffffff */
-text-secondary    /* #aaaaaa */
-text-muted        /* #666666 */
-border            /* #3d3d5c */
+// Cotizaciones
+getCotizaciones()            → (Cotizacion & { items })[]
+createCotizacion(data)       → Cotizacion & { items }
+updateCotizacionEstado(id, estado) → void
+deleteCotizacion(id)         → void
 
-/* Accent */
-text-primary     /* #00d4ff (primary) - use sparingly */
-text-primary-hover /* #00b8e6 */
-```
+// Notas de Crédito
+getNotasCredito()            → (NotaCredito & { items })[]
+createNotaCredito(data)      → NotaCredito & { items }
+deleteNotaCredito(id)        → void
 
-### Usage Example
-```tsx
-import { Button } from './components/ui/Button';
-import { Input } from './components/ui/Input';
-
-<Button variant="primary" onClick={handleSave}>
-  <Save className="w-4 h-4 mr-2" />
-  Guardar
-</Button>
-
-<Input label="Nombre" value={nome} onChange={setNome} error={errors.nome} />
+// Alertas de stock
+getStockMinimo()             → ItemBajoStock[]   // Items bajo su umbral mínimo
+getSinStock()                → ItemSinStock[]    // Items con stock = 0
 ```
 
 ---
 
 ## Venndelo Integration
 
-Logística de envíos nacionales. Full API reference in `.claude/agents/venndelo-expert.md`.
+Logística de envíos nacionales. Referencia completa en `.claude/agents/venndelo-expert.md`.
 
-### Config (stored in `configuracion`)
-- `api_key_venndelo` — API key
-- `ciudad_origen` — DANE city code (default: `11001000` = Bogotá)
-- `peso_default_kg` — default package weight (default: `0.5`)
+### Configuración (en `configuracion`)
+- `api_key_venndelo` — API key (`X-Venndelo-Api-Key`)
+- `ciudad_origen` — Código DANE de la ciudad de despacho (default: `11001000` = Bogotá)
+- `peso_default_kg` — Peso por defecto de paquetes para cotizar (default: `0.5`)
 
-### Auto-sync
-On app start (`App.tsx`): if API key is set and 24h have passed since last sync, `sincronizarProductosVenndelo()` runs silently and updates `venndelo_id` on matching products.
+### Auto-sync de productos
+Al iniciar la app (`App.tsx`): si hay API key y han pasado >24h desde el último sync, ejecuta `sincronizarProductosVenndelo()` silenciosamente. Upsert por `venndelo_id` primero, luego por `codigo`.
 
-### Factura → Shipment flow
-1. `createOrder()` → saves `venndelo_order_id`, `pin`
-2. `createShipment()` if needed
-3. `generateLabel()` with up to 20 retries (2 s apart)
-4. Rust command `download_guide` saves PDF to `~/Documentos/MySpace/Guías/`
-5. `updateFacturaVenndelo()` persists all fields to localStorage
+### Flujo completo: Factura → Guía física
 
-### Key files
-- `src/lib/venndelo.ts` — API calls
-- `src/lib/envio.ts` — quote logic
-- `src-tauri/src/lib.rs` — `download_guide` Tauri command
+```
+1. createOrder()          → Crea orden en Venndelo. Guarda venndelo_order_id, pin.
+2. createShipment()       → Solicita creación del envío (si la orden lo requiere).
+3. generateLabel()        → Polling hasta 20 intentos (2 s cada uno) hasta estado SUCCESS.
+                            Devuelve { labelUrl, tracking }.
+4. Rust: download_guide   → Descarga el PDF de la guía a ~/Documentos/MySpace/Guías/.
+5. updateFacturaVenndelo()→ Persiste todos los campos en localStorage.
+```
+
+### Archivos clave
+- `src/lib/venndelo.ts` — Todas las llamadas a la API Venndelo
+- `src/lib/envio.ts` — Cotización de envío (`cotizarEnvio`) + lista de ciudades con fallback
+- `src-tauri/src/lib.rs` — Comando Rust `download_guide`
 
 ---
 
-## Pages & Routes
+## UI Components
 
-| Page | Route (Tab) | Purpose |
-|------|-------------|---------|
-| Dashboard | `dashboard` | Analytics: ventas mensuales, productos más vendidos, stock alerts |
-| Facturas | `facturas` | Create/list facturas, Venndelo order & label creation |
-| Cotizaciones | `cotizaciones` | Cotizaciones con cotización de envío en tiempo real |
-| NotasCredito | `notas_credito` | Notas de crédito vinculadas a facturas |
-| Pedidos | `pedidos` | Seguimiento pedidos locales y nacionales, domiciliarios |
-| Reportes | `reportes` | Reportes de ventas e inventario |
-| Inventario | `inventario` | Tab container: MP, Subproductos, Productos, Combos |
-| Disponibilidad | `disponibilidad` | Alerts: stock mínimo, sin stock |
-| Clientes | `clientes` | CRUD clientes |
-| HistorialInventario | `historial` | Auditoría de movimientos de inventario |
-| Configuracion | `configuracion` | Empresa settings, Venndelo API key, auto-updater |
+### Disponibles en `src/components/ui/`
 
-### Navigation
-Uses custom `NavigationContext` - tab-based routing (not URL-based).
+| Componente | Props principales | Uso |
+|------------|-------------------|-----|
+| **Button** | `variant`, `size`, `disabled`, `loading` | Acciones principales |
+| **Input** | `type`, `error`, `label` | Campos de formulario |
+| **Select** | `options`, `value`, `onChange`, `label` | Dropdowns |
+| **Modal** | `open`, `onClose`, `title` | Diálogos |
+| **Table** | `columns`, `data`, `onRowClick` | Tablas simples |
+| **DataTable** | Incluye búsqueda y paginación | Tablas avanzadas |
+| **Badge** | `variant` | Indicadores de estado |
+| **Card** | `title`, `children` | Contenedores de contenido |
+| **GlobalSearch** | `open`, `onClose` | Búsqueda global (Ctrl+K) |
 
-```tsx
-// In Layout.tsx
-<Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+### Theme (Tailwind custom)
+
+```css
+bg-background      /* #0a0a1a — fondo general */
+bg-surface         /* #1e1e2e — tarjetas/sidebar */
+bg-surface-hover   /* hover state */
+text-primary       /* blanco */
+text-secondary     /* gris claro */
+text-muted         /* gris oscuro */
+border-border      /* separadores */
+text-primary-accent /* #00d4ff — azul cian, usar con moderación */
 ```
+
+---
+
+## Pages & Routes (Tab-Based)
+
+| Tab ID | Componente | Sidebar Label |
+|--------|-----------|---------------|
+| `dashboard` | Dashboard | Inicio |
+| `inventario` | Inventario | Inventario |
+| `disponibilidad` | Disponibilidad | Disponibilidad |
+| `pedidos` | Pedidos | Pedidos |
+| `cotizaciones` | Cotizaciones | Cotizaciones |
+| `notas_credito` | NotasCredito | Notas Crédito |
+| `facturas` | Facturas | Facturas |
+| `reportes` | Reportes | Contabilidad |
+| `historial` | HistorialInventario | Historial |
+| `configuracion` | ConfiguracionPage | Configuración |
+
+**No existe una página separada de Clientes.** Los clientes se buscan y crean en el flujo de creación de facturas y cotizaciones directamente.
 
 ---
 
 ## Code Conventions
 
 ### Naming
-- **Files**: camelCase (`clientes.ts`, `materias_primas.ts`)
+- **Archivos**: camelCase (`facturas.ts`, `materias_primas.ts`)
 - **Interfaces**: PascalCase (`Cliente`, `MateriaPrima`)
-- **Functions**: camelCase (`getClientes`, `addCliente`)
-- **Collections**: Spanish (`clientes`, `facturas`, `materias_primas`)
-- **Fields**: snake_case in DB, camelCase in TS interfaces
+- **Funciones**: camelCase (`getClientes`, `addCliente`)
+- **Campos DB**: snake_case (`cliente_nome`, `siguiente_numero`)
+- **UI text**: Español
 
-### Patterns
-- **CRUD**: Each entity has `getX`, `addX`, `updateX`, `deleteX`
-- **IDs**: Use `crypto.randomUUID()` (not uuid package)
-- **Dates**: ISO `YYYY-MM-DD` strings
-- **Money**: Numbers (no currency formatting in DB)
-- **Toast**: Use `sonner` for all notifications
+### Patrones estándar
 
-### Component Structure
-```tsx
-import { useState, useEffect } from 'react';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+```typescript
+// IDs — siempre crypto.randomUUID()
+const id = crypto.randomUUID();
+
+// Fechas — ISO string YYYY-MM-DD
+const fecha = new Date().toISOString().split('T')[0];
+
+// Dinero — number plano, sin formato en la capa de datos
+// Nunca: "$ 1.000.000" en el store; sí en el render con Intl.NumberFormat
+
+// Toasts — vía sonner
 import { toast } from 'sonner';
-import { getX, addX, updateX, deleteX } from '../lib/database';
+toast.success('Guardado');
+toast.error('Error al guardar');
+```
 
+### Estructura estándar de página
+
+```tsx
 export function PageName() {
   const [data, setData] = useState<Type[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setData(getX());
-    setLoading(false);
-  }, []);
+  useEffect(() => { setData(getX()); }, []);
 
-  if (loading) return <LoadingSpinner />;
-
-  return (
-    <div className="p-6">
-      {/* content */}
-    </div>
-  );
+  return <div className="p-6">...</div>;
 }
+```
+
+---
+
+## Agregar Nuevas Funcionalidades
+
+### Nueva página
+
+```tsx
+// 1. src/pages/NewPage.tsx
+export function NewPage() { return <div className="p-6">...</div>; }
+
+// 2. src/App.tsx — agregar al bloque de tabs
+{activeTab === 'newpage' && <NewPage />}
+
+// 3. src/components/Layout.tsx — agregar al array `tabs`
+{ id: 'newpage', label: 'Nueva Página', icon: SomeIcon },
+```
+
+### Nueva entidad
+
+```typescript
+// 1. src/lib/types.ts — definir interface
+export interface NuevaEntidad { id: string; /* campos */ }
+
+// 2. src/lib/database.ts — agregar al DataStore y defaultData
+// 3. src/lib/database.ts — implementar get/add/update/delete
 ```
 
 ---
 
 ## Gotchas
 
-1. **Vite port 1420 is fixed** (`vite.config.ts:27`)
-   - Tauri requires this exact port
-   - Do not change
-
-2. **sql.js excluded from deps** (`vite.config.ts:12-14`)
-   - Even though in package.json
-   - Do not remove exclusion
-
-3. **src-tauri/ ignored by Vite watcher** (`vite.config.ts:38-40`)
-   - Expected behavior - Rust updates separately
-
-4. **IVA is always 0**
-   - DB layer sets `iva = 0` — the `Factura.iva` field exists but is never calculated
-   - Do not assume 19%
-
-5. **No tests or lint configured**
-   - TypeScript strict mode is the only verification
-   - Run `npm run build` to typecheck
-
-6. **localStorage, not PostgreSQL**
-   - Ignore Docker files (`init.sql`)
-   - Data persists in browser localStorage
-
-7. **Stock adjustments on factura**
-   - Implemented via `despacharFactura()` and inventory movement functions
-   - Movements are audited in `inventario_movimientos` collection
-
-8. **Factura numbering**
-   - Auto-increments on each `createFactura()`
-   - Reset manually in configuracion if needed
+| # | Problema | Causa / Solución |
+|---|---------|-----------------|
+| 1 | Puerto Vite fijo en **1420** | Tauri lo requiere hardcoded en `vite.config.ts`. No cambiar. |
+| 2 | `sql.js` excluido de deps Vite | El exclude en `vite.config.ts` es intencional. No eliminar. |
+| 3 | **IVA siempre 0** | La capa DB fija `iva = 0`. El campo existe pero no se calcula. |
+| 4 | `deleteCombo` es soft-delete | Solo pone `activo = false`. Preserva el historial en facturas. |
+| 5 | Stock se descuenta al **crear** la factura | No al despachar. `anularFactura` lo restaura. |
+| 6 | `uuid` instalado pero **no se usa** | Los IDs usan `crypto.randomUUID()` nativo. |
+| 7 | `react-router-dom` instalado pero **no se usa** | La navegación usa `NavigationContext` (tab state). |
+| 8 | No existe `Clientes.tsx` como página | Los clientes se gestionan inline en facturas y cotizaciones. |
+| 9 | `src-tauri/` ignorado por el watcher de Vite | Comportamiento esperado; Rust compila separadamente. |
 
 ---
 
 ## Backup & Recovery
 
-### Manual Backup
 ```typescript
-// Export current state
-backupToFile()  // Downloads JSON backup
+import { exportDatabaseToJSON, importDatabaseFromJSON } from './lib/backup';
 
-// Import
-importBackup(file)  // Restores from backup file
+exportDatabaseToJSON();  // Descarga JSON con todos las colecciones
+importDatabaseFromJSON(data);  // Restaura desde JSON (requiere recarga de página)
 ```
 
-### Location
-Backups store all 8 collections in a single JSON file.
+El backup incluye: `configuracion`, `clientes`, `materias_primas`, `subproductos`, `productos`, `producto_componentes`, `facturas`, `factura_items`.
 
 ---
 
-## Build & Distribution
+## Build & Distribución
 
-### Generate .exe
 ```bash
 npm run tauri build
+# Output: src-tauri/target/release/bundle/
+#   └── appimage/   *.AppImage  (Linux)
+#   └── nsis/       *.exe       (Windows)
+#   └── dmg/        *.dmg       (macOS)
 ```
 
-Output located in:
-```
-src-tauri/target/release/bundle/nsis/
-```
-
-### Tauri Config
-Window size, CSP, and bundle settings in:
-```
-src-tauri/tauri.conf.json
-```
+La configuración de ventana, CSP y bundle está en `src-tauri/tauri.conf.json`.
 
 ---
 
-## Adding New Features
+## Versionado — Reglas para push a `main`
 
-### 1. New Page
-```tsx
-// src/pages/NewFeature.tsx
-export function NewFeature() {
-  return <div>Content</div>;
-}
+**Tres archivos deben actualizarse juntos** antes de cada push:
 
-// src/App.tsx - add to render
-{activeTab === 'newfeature' && <NewFeature />}
+1. `package.json` → `version`
+2. `src-tauri/tauri.conf.json` → `version`
+3. `src/lib/changelog.ts` → agregar entrada al **inicio** del array con `version`, `fecha`, y las secciones `novedades`, `mejoras`, `correcciones`
 
-// src/components/Layout.tsx - add to sidebar
-<SidebarItem tab="newfeature" icon={Icon} label="Label" />
-```
+**Progresión**: `0.1.X` → `0.1.30` → `0.2.0` (primer major release) → semver desde ahí.
 
-### 2. New Entity
-```typescript
-// src/lib/types.ts - add interface
-export interface NuevaEntidad {
-  id: string;
-  // fields
-}
-
-// src/lib/database.ts - add CRUD
-export function getNuevaEntidades(): NuevaEntidad[] { ... }
-export function addNuevaEntidad(data): NuevaEntidad { ... }
-```
-
-### 3. New UI Component
-```tsx
-// src/components/ui/NewComponent.tsx
-import { cn } from '../../lib/utils';
-
-interface Props {
-  className?: string;
-}
-
-export function NewComponent({ className }: Props) {
-  return <div className={cn("bg-surface", className)} />;
-}
-```
+**Flujo del modal de novedades**:
+- `App.tsx` compara versión instalada (`@tauri-apps/api/app`) vs `localStorage('dg_last_version_seen')`
+- Si difieren → muestra `ChangelogModal`
+- Al cerrar → escribe la versión actual en `dg_last_version_seen`
+- También accesible desde Configuración → "Ver novedades"
 
 ---
 
 ## Quick Reference
 
-| Task | Command/File |
-|------|--------------|
-| Add new client | `addCliente(data)` |
-| Create factura | `createFactura(data)` |
-| Check stock alerts | `getStockMinimo()` |
-| Generate PDF invoice | `generateInvoicePDF(factura)` |
-| Export to Excel | `exportToExcel(data, filename)` |
-| Change theme colors | `tailwind.config.js` |
-| Update window size | `src-tauri/tauri.conf.json` |
-| Add new page | `src/pages/NewPage.tsx` |
-
----
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/lib/database.ts` | Central data store - all CRUD operations |
-| `src/lib/types.ts` | TypeScript interfaces for all entities |
-| `src/lib/changelog.ts` | Release notes per version — edit here when bumping version |
-| `src/components/ChangelogModal.tsx` | Modal that shows release notes to the user |
-| `src/pages/Dashboard.tsx` | Analytics with recharts |
-| `src/pages/Facturas.tsx` | Factura creation & management |
-| `src/components/Layout.tsx` | Navigation sidebar |
-| `tailwind.config.js` | Theme colors & configuration |
-| `src-tauri/tauri.conf.json` | Desktop window & bundle settings |
-| `vite.config.ts` | Vite & Tauri port configuration |
-
----
-
-## Versionado
-
-### Reglas para push a main
-
-1. **Tres archivos deben actualizarse juntos** antes de cada push:
-   - `package.json` → `version`
-   - `src-tauri/tauri.conf.json` → `version`
-   - `src/lib/changelog.ts` → agregar entrada al **inicio** del array con `version`, `fecha`, y las secciones `novedades`, `mejoras`, `correcciones` que apliquen
-
-2. **Progresión de versiones**:
-   - Las versiones siguen el formato `0.1.X` hasta alcanzar `0.1.30`
-   - La versión `0.1.30` será seguida por `0.2.0` (primer major release)
-   - A partir de `0.2.0`, seguir semantic versioning (0.2.1, 0.2.2, ..., 0.3.0, etc.)
-
-3. **Flujo correcto para push**:
-   ```bash
-   # 1. Hacer cambios y commits
-   # 2. Actualizar package.json, tauri.conf.json y changelog.ts con la nueva versión
-   # 3. git add -A && git commit -m "chore: bump version to X.Y.Z"
-   # 4. git push origin main
-   ```
-
-4. **Cómo funciona el modal de novedades**:
-   - `App.tsx` compara la versión instalada contra `localStorage('dg_last_version_seen')` al iniciar
-   - Si difieren, muestra `ChangelogModal` con las notas de `changelog.ts`
-   - Al cerrar el modal se escribe la versión actual en `dg_last_version_seen`
-   - También accesible desde Configuración → "Ver novedades"
+| Tarea | Función / Archivo |
+|-------|------------------|
+| Crear factura | `createFactura(data)` en `database.ts` |
+| Anular factura (revierte stock) | `anularFactura(id, motivo)` |
+| Ensamblar producto | `assembleProduto(produtoId, cantidad)` |
+| Crear orden Venndelo | `createOrder(factura, items, apiKey, config)` en `venndelo.ts` |
+| Cotizar envío | `cotizarEnvio(ciudadDestino, pesoKg, ...)` en `envio.ts` |
+| Verificar stock bajo | `getStockMinimo()` |
+| Exportar Excel | `exportContabilidadDetallada(...)` en `export.ts` |
+| Generar PDF factura | `gerarPDFFactura(factura)` en `pdf.ts` |
+| Backup | `exportDatabaseToJSON()` en `backup.ts` |
+| Cambiar tema | `tailwind.config.js` |
+| Cambiar ventana | `src-tauri/tauri.conf.json` |

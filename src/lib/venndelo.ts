@@ -114,6 +114,9 @@ function mapVenndeloProduct(v: ProductoVenndelo) {
   };
 }
 
+// Upsert de productos desde Venndelo. Estrategia de coincidencia en orden de prioridad:
+// 1. venndelo_id (productos ya enlazados); 2. codigo/SKU (productos locales pre-existentes).
+// Productos locales sin match en Venndelo no se modifican.
 export async function sincronizarProductosVenndelo(): Promise<{
   creados: number;
   actualizados: number;
@@ -410,6 +413,8 @@ export async function createShipment(orderId: string, apiKey: string): Promise<v
   }
 }
 
+// Venndelo genera guías de forma asíncrona (estado PROCESSING → SUCCESS/FAILED).
+// Polling con hasta 20 intentos (2 s entre cada uno) antes de desistir.
 export async function generateLabel(
   orderId: string,
   apiKey: string

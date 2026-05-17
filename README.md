@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white"/>
   <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white"/>
   <img src="https://img.shields.io/badge/v0.1.29-00D4FF?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/IVA-0%25-22c55e?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/License-Restricted-E60000?style=for-the-badge"/>
 </p>
 
@@ -153,30 +154,42 @@ npm run tauri build
 <summary><b>🗄️ Modelo de Datos</b></summary>
 <br>
 
-La aplicación utiliza **localStorage** como motor de base de datos con 8 colecciones:
+La aplicación utiliza **localStorage** como motor de base de datos con 15 colecciones, todas en una sola clave `dg_facturacion_db`:
 
 | Colección | Propósito |
 |---|---|
-| `configuracion` | Prefijo factura, datos de la empresa, numeración |
+| `configuracion` | Prefijo factura, datos de la empresa, numeración secuencial |
 | `clientes` | Datos de clientes (nombre, NIT, teléfono, dirección) |
-| `materias_primas` | Filamentos (PLA, PETG, ABS) con control por kg |
-| `subproductos` | Piezas intermedias con stock y costo |
-| `productos` | Productos terminados con precio de venta |
-| `producto_componentes` | Relación producto ↔ subproducto (cantidad necesaria) |
-| `facturas` | Facturas con numeración secuencial, IVA 19% |
-| `factura_items` | Detalle de ítems por factura |
+| `materias_primas` | Filamentos (PLA, PETG, ABS) con control por kg y stock mínimo |
+| `subproductos` | Piezas intermedias con stock en unidades |
+| `productos` | Productos terminados con precio, costo y link a catálogo Venndelo |
+| `producto_componentes` | Receta de ensamblaje: producto → subproductos (cantidad por unidad) |
+| `combos` | Agrupaciones de productos con stock propio |
+| `facturas` | Facturas con numeración secuencial automática; **IVA siempre 0** |
+| `factura_items` | Ítems de cada factura |
+| `cotizaciones` | Cotizaciones con costo de envío cotizado en tiempo real |
+| `cotizacion_items` | Ítems de cada cotización |
+| `notas_credito` | Notas de crédito vinculadas a facturas |
+| `nota_credito_items` | Ítems de cada nota de crédito |
+| `domiciliarios` | Mensajeros locales con control de saldos |
+| `abonos` | Pagos parciales de domiciliarios |
 
 ```typescript
 // Ejemplo: Estructura de una Factura
 interface Factura {
   id: string;
-  numero: string;            // "DG-00001"
+  numero: string;                   // "DG-00001"
   cliente_nome: string;
   subtotal: number;
-  iva: number;               // subtotal * 0.19
-  total: number;
+  iva: number;                      // Siempre 0 — no se aplica IVA
+  descuento: number;
+  costo_envio?: number;
+  total: number;                    // subtotal - descuento + costo_envio
   estado: 'activa' | 'anulada';
-  fecha: string;             // YYYY-MM-DD
+  fecha: string;                    // YYYY-MM-DD
+  tipo_pedido?: 'local' | 'nacional';
+  venndelo_order_id?: string;       // Solo pedidos nacionales vía Venndelo
+  estado_entrega?: 'pendiente' | 'en_produccion' | 'entregado' | '...';
 }
 ```
 
@@ -192,28 +205,43 @@ interface Factura {
 pos-spacelab/
 ├── src/
 │   ├── components/
-│   │   ├── ui/          # Button, Input, Select, Modal, Table, Badge, Card
-│   │   └── Layout.tsx   # Sidebar + navegación
-│   ├── context/         # NavigationContext (tab-based routing)
+│   │   ├── ui/                  # Button, Input, Select, Modal, Table, DataTable,
+│   │   │                        # Badge, Card, GlobalSearch, KeyboardShortcuts
+│   │   ├── Layout.tsx           # Sidebar colapsable + área de contenido
+│   │   └── ChangelogModal.tsx   # Modal de novedades (auto al actualizar)
+│   ├── context/
+│   │   └── NavigationContext.tsx  # Tab-based routing (no react-router)
 │   ├── lib/
-│   │   ├── database.ts   # Data store central (localStorage)
-│   │   ├── types.ts      # Interfaces TypeScript
-│   │   ├── changelog.ts  # Notas de actualización por versión
-│   │   ├── facturas.ts   # CRUD facturas
-│   │   ├── clientes.ts   # CRUD clientes
-│   │   ├── productos.ts  # CRUD productos
-│   │   ├── pdf.ts        # Generación PDF
-│   │   ├── export.ts     # Exportación Excel
-│   │   └── backup.ts     # Backup/restore JSON
+│   │   ├── database.ts            # Store central — todas las operaciones CRUD
+│   │   ├── types.ts               # Interfaces TypeScript de todas las entidades
+│   │   ├── changelog.ts           # Notas de versión; editar al hacer versioning
+│   │   ├── venndelo.ts            # API Venndelo: productos, órdenes, guías
+│   │   ├── envio.ts               # Cotización de envío + lista de ciudades Colombia
+│   │   ├── facturas.ts            # Thin wrapper para facturas
+│   │   ├── inventarioMovimientos.ts  # Auditoría de movimientos de inventario
+│   │   ├── pdf.ts                 # Generación PDF con pdfmake
+│   │   ├── export.ts              # Exportación Excel (4 hojas)
+│   │   └── backup.ts              # Backup/restore JSON
 │   ├── pages/
-│   │   ├── Dashboard.tsx
-│   │   ├── Facturas.tsx
-│   │   ├── Inventario.tsx
-│   │   ├── Clientes.tsx
-│   │   └── ...
-│   └── App.tsx
-├── src-tauri/            # Rust backend + configuración Tauri
-├── public/               # Assets estáticos
+│   │   ├── Dashboard.tsx          # Analytics: ventas, top productos, stock alerts
+│   │   ├── Facturas.tsx           # CRUD facturas + flujo Venndelo
+│   │   ├── Cotizaciones.tsx       # Cotizaciones con envío en tiempo real
+│   │   ├── NotasCredito.tsx       # Notas de crédito vinculadas a facturas
+│   │   ├── Pedidos.tsx            # Seguimiento pedidos + domiciliarios
+│   │   ├── Reportes.tsx           # Reportes contables + Excel
+│   │   ├── Inventario.tsx         # Contenedor de 4 sub-tabs
+│   │   ├── InventarioMP.tsx       # Materias primas
+│   │   ├── InventarioSubproductos.tsx
+│   │   ├── InventarioProductos.tsx  # Con ensamblaje/desensamblaje
+│   │   ├── InventarioCombos.tsx   # Combos de productos
+│   │   ├── Disponibilidad.tsx     # Alertas de stock bajo o cero
+│   │   ├── HistorialInventario.tsx  # Auditoría de movimientos
+│   │   └── Configuracion.tsx      # Empresa + API key Venndelo + updater
+│   └── App.tsx                    # Bootstrap + keyboard shortcuts
+├── src-tauri/
+│   ├── src/lib.rs                 # Comandos Rust: download_guide
+│   └── tauri.conf.json            # Ventana, CSP, bundle, update endpoint
+├── public/                        # Logo, imágenes estáticas
 └── package.json
 ```
 
@@ -247,6 +275,39 @@ La aplicación verifica actualizaciones al iniciar usando el plugin `@tauri-apps
 ```
 
 Al instalar la nueva versión, la app muestra automáticamente un modal con las novedades. El usuario solo lo ve una vez; si quiere revisarlo luego puede hacerlo desde **Configuración → Ver novedades**.
+
+</details>
+
+<br>
+
+<details>
+<summary><b>🚚 Integración Venndelo (Logística Nacional)</b></summary>
+<br>
+
+La app se integra con **Venndelo** para gestionar envíos nacionales a todo Colombia.
+
+### Configuración
+
+Ingresa tu API key en **Configuración → API Key Venndelo**. También puedes configurar:
+- **Ciudad origen**: código DANE de tu ciudad de despacho (default: Bogotá `11001000`)
+- **Peso default**: peso en kg usado para cotizar cuando no se especifica
+
+### Flujo de un pedido nacional
+
+```
+1. Crear Factura → tipo "Nacional" → seleccionar ciudad destino + método de pago
+2. Botón "Crear Orden en Venndelo" → registra el pedido en Venndelo
+3. Botón "Generar Guía" → crea el envío y descarga el PDF de la guía
+4. La guía se guarda en ~/Documentos/MySpace/Guías/ automáticamente
+```
+
+### Auto-sync de productos
+
+Al iniciar, si hay API key y pasaron >24h, sincroniza automáticamente el catálogo de Venndelo con los productos locales. Esto enlaza los `venndelo_id` para incluirlos correctamente al crear órdenes.
+
+### Cotización de envío
+
+En **Cotizaciones**, puedes cotizar el costo de envío en tiempo real seleccionando la ciudad destino. Usa el endpoint `/orders/quotation` de Venndelo.
 
 </details>
 
