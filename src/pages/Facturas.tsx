@@ -797,7 +797,7 @@ export function Facturas() {
     setVenndeloOrderLoading(false);
   }
 
-  function handleExportar(formato: 'excel' | 'csv') {
+  async function handleExportar(formato: 'excel' | 'csv') {
     const data = facturasFiltradas.map(f => ({
       Número: f.numero,
       Fecha: f.fecha,
@@ -807,11 +807,14 @@ export function Facturas() {
       Estado: f.estado
     }));
 
-    if (formato === 'excel') exportToExcel(data, 'facturas.xlsx');
-    else exportToCSV(data, 'facturas.csv');
-
-    setShowExport(false);
-    toast.success('Exportación generada');
+    try {
+      if (formato === 'excel') await exportToExcel(data, 'facturas');
+      else await exportToCSV(data, 'facturas');
+      setShowExport(false);
+      toast.success('Exportación generada');
+    } catch {
+      toast.error('Error al exportar');
+    }
   }
 
   function formatCurrency(value: number): string {

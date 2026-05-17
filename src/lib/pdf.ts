@@ -2,7 +2,8 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import type { Factura, FacturaItem } from './types';
 import * as db from './database';
 import { toast } from 'sonner';
-import { saveAs } from 'file-saver';
+import { invoke } from '@tauri-apps/api/core';
+import { openPath } from '@tauri-apps/plugin-opener';
 
 // Initialize pdfmake fonts at runtime to avoid build issues
 if (typeof window !== 'undefined') {
@@ -16,6 +17,7 @@ if (typeof window !== 'undefined') {
     }
   }).catch(e => console.warn('[PDF] Font import failed:', e));
 }
+
 
 async function getBase64ImageFromURL(url: string): Promise<string> {
   const res = await fetch(url);
@@ -222,9 +224,10 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
     // @ts-ignore
-    pdfDocGenerator.getBlob((blob: any) => {
+    pdfDocGenerator.getBase64(async (base64: string) => {
       const fileName = `factura_${factura.numero}.pdf`;
-      saveAs(blob, fileName);
+      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+      await openPath(path);
       toast.success('PDF generado correctamente', { id: toastId });
     });
   } catch (error) {
@@ -361,8 +364,10 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
     // @ts-ignore
-    pdfDocGenerator.getBlob((blob: any) => {
-      saveAs(blob, `guia_${factura.numero}.pdf`);
+    pdfDocGenerator.getBase64(async (base64: string) => {
+      const fileName = `guia_${factura.numero}.pdf`;
+      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+      await openPath(path);
       toast.success('Guía de envío generada', { id: toastId });
     });
   } catch (error) {
@@ -572,8 +577,10 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
     // @ts-ignore
-    pdfDocGenerator.getBlob((blob: any) => {
-      saveAs(blob, `cotizacion_${cotizacion.numero}.pdf`);
+    pdfDocGenerator.getBase64(async (base64: string) => {
+      const fileName = `cotizacion_${cotizacion.numero}.pdf`;
+      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+      await openPath(path);
       toast.success('PDF de cotización generado correctamente', { id: toastId });
     });
   } catch (error) {

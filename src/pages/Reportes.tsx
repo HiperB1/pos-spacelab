@@ -135,27 +135,31 @@ export function Reportes() {
     };
   }, [facturas, productos, fechaInicio, fechaFin, filtroEstado]);
 
-  function handleExport() {
+  async function handleExport() {
     const estadoLabel =
       filtroEstado === 'activa' ? 'Solo activas' :
       filtroEstado === 'anulada' ? 'Solo anuladas' : 'Todas';
 
-    exportContabilidadDetallada(
-      reportData.facturasFiltradas,
-      {
-        totalVentas: reportData.totalVentas,
-        gananciaTotal: reportData.gananciaTotal,
-        itemsVendidos: reportData.itemsVendidos,
-        ticketPromedio: reportData.ticketPromedio,
-        numFacturas: reportData.numFacturas,
-        totalDescuentos: reportData.totalDescuentos,
-        totalEnvios: reportData.totalEnvios,
-        tablaProductos: reportData.tablaProductos,
-      },
-      { inicio: fechaInicio, fin: fechaFin, estado: estadoLabel },
-      `Reporte_Contabilidad_${fechaInicio}_a_${fechaFin}`
-    );
-    toast.success('Reporte exportado exitosamente');
+    try {
+      await exportContabilidadDetallada(
+        reportData.facturasFiltradas,
+        {
+          totalVentas: reportData.totalVentas,
+          gananciaTotal: reportData.gananciaTotal,
+          itemsVendidos: reportData.itemsVendidos,
+          ticketPromedio: reportData.ticketPromedio,
+          numFacturas: reportData.numFacturas,
+          totalDescuentos: reportData.totalDescuentos,
+          totalEnvios: reportData.totalEnvios,
+          tablaProductos: reportData.tablaProductos,
+        },
+        { inicio: fechaInicio, fin: fechaFin, estado: estadoLabel },
+        `Reporte_Contabilidad_${fechaInicio}_a_${fechaFin}`
+      );
+      toast.success('Reporte exportado exitosamente');
+    } catch {
+      toast.error('Error al exportar el reporte');
+    }
   }
 
   function formatCurrency(value: number): string {

@@ -1,8 +1,14 @@
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
+import { invoke } from '@tauri-apps/api/core';
+import { openPath } from '@tauri-apps/plugin-opener';
 import type { Factura, FacturaItem } from './types';
 
-export function exportToExcel(data: any[], filename: string, options?: { title?: string; subtitle?: string; summary?: any; detail?: any[] }): void {
+async function saveNative(base64: string, filename: string, subfolder: string): Promise<void> {
+  const path = await invoke<string>('save_file', { filename, subfolder, data: base64 });
+  await openPath(path);
+}
+
+export async function exportToExcel(data: any[], filename: string, options?: { title?: string; subtitle?: string; summary?: any; detail?: any[] }): Promise<void> {
   const workbook = XLSX.utils.book_new();
 
   const topSection: any[][] = [];
@@ -28,18 +34,16 @@ export function exportToExcel(data: any[], filename: string, options?: { title?:
     XLSX.utils.book_append_sheet(workbook, detailSheet, 'Detalle de Ventas');
   }
 
-  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, `${filename}.xlsx`);
+  const base64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+  await saveNative(base64, `${filename}.xlsx`, 'Reportes');
 }
 
-export function exportToCSV(data: any[], filename: string): void {
+export async function exportToCSV(data: any[], filename: string): Promise<void> {
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
-  const csvBuffer = XLSX.write(workbook, { bookType: 'csv', type: 'array' });
-  const blob = new Blob([csvBuffer], { type: 'text/csv;charset=utf-8' });
-  saveAs(blob, `${filename}.csv`);
+  const base64 = XLSX.write(workbook, { bookType: 'csv', type: 'base64' });
+  await saveNative(base64, `${filename}.csv`, 'Reportes');
 }
 
 type FacturaConItems = Factura & { items: FacturaItem[] };
@@ -67,12 +71,12 @@ function applyCurrencyFormat(ws: XLSX.WorkSheet, data: any[][], colIndices: numb
   });
 }
 
-export function exportContabilidadDetallada(
+export async function exportContabilidadDetallada(
   facturas: FacturaConItems[],
   resumen: ResumenContabilidad,
   periodo: { inicio: string; fin: string; estado: string },
   filename: string
-): void {
+): Promise<void> {
   const wb = XLSX.utils.book_new();
   const fmt = (n: number) =>
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
@@ -227,7 +231,6 @@ export function exportContabilidadDetallada(
   XLSX.utils.book_append_sheet(wb, ws3, 'Ítems por Factura');
   XLSX.utils.book_append_sheet(wb, ws4, 'Por Producto');
 
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, `${filename}.xlsx`);
+  const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  await saveNative(base64, `${filename}.xlsx`, 'Reportes');
 }
