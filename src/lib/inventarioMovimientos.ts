@@ -1,5 +1,7 @@
 import type { InventarioMovimiento } from './types';
 
+// Clave separada de dg_facturacion_db intencionalmente: el historial crece sin límite
+// y no debe enlentecer el parse/stringify del store principal en cada operación.
 const STORAGE_KEY = 'dg_facturacion_movimientos';
 
 function getAllStored(): InventarioMovimiento[] {

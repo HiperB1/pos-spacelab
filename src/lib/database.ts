@@ -57,6 +57,8 @@ export async function initDatabase(): Promise<void> {
   if (saved) {
     try {
       const loaded = JSON.parse(saved);
+      // defaultData spread primero para garantizar que colecciones nuevas aparezcan
+      // aunque el JSON guardado sea de una versión anterior que no las tenía
       store = { ...JSON.parse(JSON.stringify(defaultData)), ...loaded };
     } catch {
       store = JSON.parse(JSON.stringify(defaultData));
@@ -191,6 +193,7 @@ export function deleteProductRow(id: string): void {
   save();
 }
 
+// Por default filtra inactivos: solo InventarioCombos necesita ver todos (includeInactive=true)
 export function getCombos(includeInactive = false): Combo[] {
   if (includeInactive) return store.combos;
   return store.combos.filter(c => c.activo);
@@ -216,6 +219,7 @@ export function updateCombo(id: string, data: Partial<Combo>): void {
   }
 }
 
+// Soft delete: se preserva para mantener integridad de facturas históricas que lo referencian
 export function deleteCombo(id: string): void {
   const idx = store.combos.findIndex(c => c.id === id);
   if (idx >= 0) {
@@ -262,6 +266,8 @@ export function removeComponente(id: string): void {
   save();
 }
 
+// Retorna false (sin lanzar error) cuando el stock quedaría negativo;
+// el caller muestra el mensaje al usuario
 export function adjustSubproductoStock(id: string, amount: number): boolean {
   const idx = store.subproductos.findIndex(s => s.id === id);
   if (idx >= 0) {
@@ -345,7 +351,7 @@ export function createFactura(data: any): any {
   const subtotal = data.items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
   const descuento = data.descuento || 0;
   const costoEnvio = data.costo_envio || 0;
-  const iva = 0;
+  const iva = 0; // IVA no aplica en MySpace — el campo existe por compatibilidad
   const total = subtotal - descuento + costoEnvio;
   
   const factura: Factura = {
@@ -389,6 +395,8 @@ export function createFactura(data: any): any {
   
   store.factura_items.push(...items);
 
+  // Stock se descuenta al crear la factura, no al despachar.
+  // anularFactura() hace el movimiento inverso si se cancela.
   for (const item of data.items) {
     if (item.tipo_item === 'produto' && item.produto_id) {
       adjustProdutoStock(item.produto_id, -item.quantidade);
@@ -402,7 +410,7 @@ export function createFactura(data: any): any {
       }
     }
   }
-  
+
   store.configuracion.siguiente_numero++;
   save();
   

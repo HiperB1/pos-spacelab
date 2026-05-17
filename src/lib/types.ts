@@ -12,12 +12,12 @@ export interface MateriaPrima {
   id: string;
   codigo?: string;
   nome: string;
-  tipo: string;
+  tipo: string;       // e.g., "PLA", "PETG", "ABS", "Resina"
   color: string;
   fornecedor: string;
-  quantidade_kg: number;
-  preco_kg: number;
-  stock_minimo?: number;
+  quantidade_kg: number;   // Stock actual en kilogramos
+  preco_kg: number;        // Costo por kilogramo
+  stock_minimo?: number;   // Umbral de alerta en kg; aparece en Disponibilidad si <= este valor
 }
 
 export interface Subproducto {
@@ -39,8 +39,8 @@ export interface Produto {
   tags?: string[];
   preco: number;
   custo: number;
-  quantidade_stock?: number;
-  venndelo_id?: string;
+  quantidade_stock?: number; // Solo existe si el producto fue ensamblado; no aplica a servicios manuales
+  venndelo_id?: string;      // ID en el catálogo de Venndelo; se llena en el auto-sync diario
 }
 
 export interface Combo {
@@ -90,17 +90,18 @@ export interface Factura {
   cliente_direccion: string;
   fecha: string;
   subtotal: number;
-  iva: number;
+  iva: number;             // Siempre 0 — MySpace no aplica IVA. El campo existe para compatibilidad futura.
   descuento: number;
   costo_envio?: number;
-  total: number;
-  estado: string;
+  total: number;           // subtotal - descuento + costo_envio
+  estado: string;          // 'activa' | 'anulada'
   notas?: string;
   motivo_anulacion?: string;
   fecha_anulacion?: string;
 
   // Tipo de pedido
   tipo_pedido?: 'local' | 'nacional';
+  // COD = Contra entrega (Venndelo cobra al destinatario); EXTERNAL_PAYMENT = ya pagó por otro medio
   payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
   ciudad_destino?: string;
   venndelo_order_id?: string;
