@@ -41,6 +41,11 @@ export interface Produto {
   custo: number;
   quantidade_stock?: number; // Solo existe si el producto fue ensamblado; no aplica a servicios manuales
   venndelo_id?: string;      // ID en el catálogo de Venndelo; se llena en el auto-sync diario
+  venndelo_variation_id?: string;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
 }
 
 export interface Combo {
@@ -157,6 +162,9 @@ export interface Configuracion {
   api_key_venndelo?: string;
   ciudad_origen?: string;
   peso_default_kg?: number;
+  alto_default_cm?: number;
+  ancho_default_cm?: number;
+  largo_default_cm?: number;
 }
 
 export interface Cotizacion {

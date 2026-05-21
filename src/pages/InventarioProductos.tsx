@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useNavigation } from '../context/NavigationContext';
 import { Box, Plus, FileSpreadsheet, Trash2, Edit3, Settings2, RefreshCw } from 'lucide-react';
 import { getConfiguracion } from '../lib/database';
-import { sincronizarProductosVenndelo, getVenndeloLastSync } from '../lib/venndelo';
+import { sincronizarProductosVenndelo, getVenndeloLastSync, updateVariacionVenndelo } from '../lib/venndelo';
 
 interface Produto {
   id: string;
@@ -24,6 +24,11 @@ interface Produto {
   custo: number;
   quantidade_stock?: number;
   venndelo_id?: string;
+  venndelo_variation_id?: string;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
 }
 
 export function InventarioProductos() {
@@ -41,7 +46,11 @@ export function InventarioProductos() {
     categoria: '',
     tags: '',
     preco: 0,
-    custo: 0
+    custo: 0,
+    peso_kg: undefined as number | undefined,
+    alto_cm: undefined as number | undefined,
+    ancho_cm: undefined as number | undefined,
+    largo_cm: undefined as number | undefined,
   });
   const [componentes, setComponentes] = useState<any[]>([]);
   const [nuevoComponente, setNuevoComponente] = useState({ subproductoId: '', quantidade: 1 });
@@ -60,9 +69,9 @@ export function InventarioProductos() {
     setItems(getProdutos());
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     const dataToSave = {
       nome: formData.nome,
       descripcion: formData.descripcion,
@@ -70,13 +79,35 @@ export function InventarioProductos() {
       custo: formData.custo,
       codigo: formData.codigo || undefined,
       categoria: formData.categoria || undefined,
-      tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined
+      tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+      peso_kg: formData.peso_kg,
+      alto_cm: formData.alto_cm,
+      ancho_cm: formData.ancho_cm,
+      largo_cm: formData.largo_cm,
     };
-    
+
     try {
       if (editing) {
         updateProductRow(editing.id, dataToSave);
-        toast.success('Producto actualizado');
+        const puedeSincronizar = editing.venndelo_id && editing.venndelo_variation_id &&
+          dataToSave.peso_kg && dataToSave.alto_cm && dataToSave.ancho_cm && dataToSave.largo_cm;
+        if (puedeSincronizar) {
+          try {
+            await updateVariacionVenndelo(editing.venndelo_id!, editing.venndelo_variation_id!, {
+              peso_kg: dataToSave.peso_kg!,
+              alto_cm: dataToSave.alto_cm!,
+              ancho_cm: dataToSave.ancho_cm!,
+              largo_cm: dataToSave.largo_cm!,
+              precio: dataToSave.preco,
+            });
+            toast.success('Producto actualizado y sincronizado con Venndelo');
+          } catch (e) {
+            toast.warning('Guardado localmente. No se pudo sincronizar con Venndelo: ' +
+              (e instanceof Error ? e.message : 'error'));
+          }
+        } else {
+          toast.success('Producto actualizado');
+        }
       } else {
         addProduto(dataToSave);
         toast.success('Producto creado');
@@ -98,7 +129,11 @@ export function InventarioProductos() {
       categoria: item.categoria || '',
       tags: item.tags?.join(', ') || '',
       preco: item.preco,
-      custo: item.custo
+      custo: item.custo,
+      peso_kg: item.peso_kg,
+      alto_cm: item.alto_cm,
+      ancho_cm: item.ancho_cm,
+      largo_cm: item.largo_cm,
     });
     setShowModal(true);
   }
@@ -113,7 +148,10 @@ export function InventarioProductos() {
 
 function openModal() {
     setEditing(null);
-    setFormData({ codigo: '', nome: '', descripcion: '', categoria: '', tags: '', preco: 0, custo: 0 });
+    setFormData({
+      codigo: '', nome: '', descripcion: '', categoria: '', tags: '', preco: 0, custo: 0,
+      peso_kg: undefined, alto_cm: undefined, ancho_cm: undefined, largo_cm: undefined,
+    });
     setShowModal(true);
   }
 
@@ -153,9 +191,12 @@ function openModal() {
       const result = await sincronizarProductosVenndelo();
       setLastSync(getVenndeloLastSync());
       loadData();
-      toast.success(
-        `Sincronización completa: ${result.creados} creados, ${result.actualizados} actualizados (${result.total} en Venndelo)`
-      );
+      const partes = [];
+      if (result.creados > 0) partes.push(`${result.creados} creados`);
+      if (result.actualizados > 0) partes.push(`${result.actualizados} actualizados`);
+      if (result.actualizadosEnVenndelo > 0) partes.push(`${result.actualizadosEnVenndelo} dims enviadas a Venndelo`);
+      if (result.sinCambios > 0) partes.push(`${result.sinCambios} sin cambios`);
+      toast.success(`Sincronización completa: ${partes.join(', ')} (${result.total} en Venndelo)`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
       toast.error(`Error al sincronizar con Venndelo: ${msg}`);
@@ -186,11 +227,17 @@ function openModal() {
     { key: 'codigo', header: 'SKU', sortable: true, searchable: true },
     { key: 'nome', header: 'Nombre', sortable: true, searchable: true },
     { key: 'categoria', header: 'Categoría', sortable: true, filterable: true },
-    { 
-      key: 'preco', 
-      header: 'Precio', 
+    {
+      key: 'preco',
+      header: 'Precio',
       sortable: true,
       render: (item) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.preco)
+    },
+    {
+      key: 'peso_kg',
+      header: 'Peso',
+      sortable: true,
+      render: (item) => item.peso_kg ? `${item.peso_kg} kg` : '—'
     },
     {
       key: 'quantidade_stock',
@@ -319,6 +366,39 @@ placeholder="Detalles adicionales..."
               onChange={e => setFormData({...formData, custo: parseFloat(e.target.value) || 0})}
               required
             />
+          </div>
+          <div className="border-t border-white/10 pt-4">
+            <p className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3">Datos de envío</p>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Peso (kg)"
+                type="number"
+                value={formData.peso_kg ?? ''}
+                onChange={e => setFormData({ ...formData, peso_kg: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
+                placeholder="Ej: 0.3"
+              />
+              <Input
+                label="Alto (cm)"
+                type="number"
+                value={formData.alto_cm ?? ''}
+                onChange={e => setFormData({ ...formData, alto_cm: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
+                placeholder="Ej: 15"
+              />
+              <Input
+                label="Ancho (cm)"
+                type="number"
+                value={formData.ancho_cm ?? ''}
+                onChange={e => setFormData({ ...formData, ancho_cm: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
+                placeholder="Ej: 10"
+              />
+              <Input
+                label="Largo (cm)"
+                type="number"
+                value={formData.largo_cm ?? ''}
+                onChange={e => setFormData({ ...formData, largo_cm: e.target.value !== '' ? parseFloat(e.target.value) : undefined })}
+                placeholder="Ej: 20"
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>
