@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Tauri-FFC131?style=for-the-badge&logo=tauri&logoColor=black"/>
   <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white"/>
   <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white"/>
-  <img src="https://img.shields.io/badge/v0.1.29-00D4FF?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/v1.0.0-00D4FF?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/IVA-0%25-22c55e?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/License-Restricted-E60000?style=for-the-badge"/>
 </p>
