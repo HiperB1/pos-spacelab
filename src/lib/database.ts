@@ -815,5 +815,46 @@ export function deleteNotaCredito(id: string): void {
   save();
 }
 
+export function getTransactionalCounts() {
+  return {
+    facturas: store.facturas.length,
+    cotizaciones: store.cotizaciones.length,
+    notas: store.notas_credito.length,
+    abonos: store.abonos.length,
+    domiciliarios: store.domiciliarios.length,
+  };
+}
+
+export function resetTransactionalData(): void {
+  // Lee directo desde localStorage para no depender del estado en memoria
+  const raw = localStorage.getItem('dg_facturacion_db');
+  const current: DataStore = raw
+    ? { ...JSON.parse(JSON.stringify(defaultData)), ...JSON.parse(raw) }
+    : JSON.parse(JSON.stringify(defaultData));
+
+  current.facturas = [];
+  current.factura_items = [];
+  current.cotizaciones = [];
+  current.cotizacion_items = [];
+  current.notas_credito = [];
+  current.nota_credito_items = [];
+  current.abonos = [];
+  current.domiciliarios = [];
+  current.configuracion = { ...current.configuracion, siguiente_numero: 1 };
+
+  localStorage.setItem('dg_facturacion_db', JSON.stringify(current));
+
+  // Sincroniza el store en memoria también
+  store.facturas = [];
+  store.factura_items = [];
+  store.cotizaciones = [];
+  store.cotizacion_items = [];
+  store.notas_credito = [];
+  store.nota_credito_items = [];
+  store.abonos = [];
+  store.domiciliarios = [];
+  store.configuracion.siguiente_numero = 1;
+}
+
 // Force re-export
 export type { Cliente, MateriaPrima, Subproducto, Produto, Factura, FacturaItem, Configuracion, Domiciliario, Abono, Cotizacion, CotizacionItem, NotaCredito, NotaCreditoItem };
