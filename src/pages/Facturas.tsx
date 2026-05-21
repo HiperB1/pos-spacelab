@@ -151,7 +151,7 @@ export function Facturas() {
   const [notas, setNotas] = useState('');
   const [descuento, setDescuento] = useState(0);
   const [items, setItems] = useState<ItemFactura[]>([
-    { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }
+    { tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }
   ]);
 
   const [tipoPedido, setTipoPedido] = useState<'local' | 'nacional'>('local');
@@ -266,7 +266,7 @@ export function Facturas() {
   }
 
   function addItem() {
-    setItems([...items, { tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([...items, { tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -372,6 +372,31 @@ export function Facturas() {
       largo_cm: item.largo_cm,
     }));
 
+    let costoEnvioFinal = costoEnvio;
+    if (tipoPedido === 'nacional' && !envioCalculado) {
+      const itemsConPrecio = validItems.filter(i => i.precio > 0);
+      if (itemsConPrecio.length > 0 && ciudadDestino) {
+        const configEnvio = getConfiguracion();
+        if (configEnvio.api_key_venndelo) {
+          try {
+            const ciudadObj = ciudades.find(c => c.code === ciudadDestino);
+            const subtotalActual = validItems.reduce((sum, i) => sum + i.quantidade * i.precio, 0);
+            costoEnvioFinal = await cotizarEnvioSimple(
+              ciudadDestino,
+              itemsConPrecio as ItemEnvio[],
+              ciudadObj?.subdivision_code,
+              paymentMethod,
+              subtotalActual
+            );
+            setCostoEnvio(costoEnvioFinal);
+            setEnvioCalculado(true);
+          } catch {
+            // Fallo silencioso: se crea la factura con costo_envio 0
+          }
+        }
+      }
+    }
+
     try {
       const f = createFactura({
         ...formData,
@@ -381,7 +406,7 @@ export function Facturas() {
         items: itemsParaGuardar,
         notas,
         descuento,
-        costo_envio: tipoPedido === 'nacional' ? costoEnvio : 0,
+        costo_envio: tipoPedido === 'nacional' ? costoEnvioFinal : 0,
         tipo_pedido: tipoPedido,
         payment_method_code: paymentMethod,
         ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : ''
@@ -570,7 +595,7 @@ export function Facturas() {
     setFormData({ cliente_id: '', cliente_nome: '', cliente_celular: '', cliente_nit: '', cliente_direccion: '' });
     setNotas('');
     setDescuento(0);
-    setItems([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
+    setItems([{ tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
     setTipoPedido('local');
     setClienteApellido('');
     setClienteEmail('');
@@ -990,7 +1015,7 @@ export function Facturas() {
                 value={formData.cliente_id}
                 onChange={e => handleClienteSelect(e.target.value)}
                 options={[
-                  { value: '', label: 'Cliente Ocasional / Manuel' },
+                  { value: '', label: 'Cliente Ocasional / Manual' },
                   ...dbClientes.map(c => ({ value: c.id, label: c.nome }))
                 ]}
               />
