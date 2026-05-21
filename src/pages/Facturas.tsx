@@ -118,6 +118,10 @@ interface ItemFactura {
   descripcion: string;
   quantidade: number;
   precio: number;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
 }
 
 export function Facturas() {
@@ -298,6 +302,10 @@ export function Facturas() {
         newItems[index].descripcion = prod?.nome || '';
         newItems[index].precio = prod?.preco || 0;
         newItems[index].venndelo_id = prod?.venndelo_id;
+        newItems[index].peso_kg = prod?.peso_kg;
+        newItems[index].alto_cm = prod?.alto_cm;
+        newItems[index].ancho_cm = prod?.ancho_cm;
+        newItems[index].largo_cm = prod?.largo_cm;
       }
     }
     setItems(newItems);
@@ -319,12 +327,23 @@ export function Facturas() {
     try {
       const ciudad = ciudades.find(c => c.code === ciudadDestino);
       const subtotalActual = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
+      const pesoTotal = itemsValidos.reduce((sum, item) => {
+        const pesoUnidad = item.peso_kg ?? (config.peso_default_kg ?? 0.5);
+        return sum + pesoUnidad * item.quantidade;
+      }, 0);
+      const itemConDims = itemsValidos.find(i => i.alto_cm);
+      const dimensiones = itemConDims?.alto_cm ? {
+        alto: itemConDims.alto_cm,
+        ancho: itemConDims.ancho_cm ?? 20,
+        largo: itemConDims.largo_cm ?? 20,
+      } : undefined;
       const precio = await cotizarEnvioSimple(
         ciudadDestino,
-        0.5,
+        pesoTotal || (config.peso_default_kg ?? 0.5),
         ciudad?.subdivision_code,
         paymentMethod,
-        subtotalActual
+        subtotalActual,
+        dimensiones
       );
       setCostoEnvio(precio);
       setEnvioCalculado(true);
@@ -357,7 +376,11 @@ export function Facturas() {
       venndelo_id: item.venndelo_id,
       descripcion: item.descripcion,
       quantidade: item.quantidade,
-      precio: item.precio
+      precio: item.precio,
+      peso_kg: item.peso_kg,
+      alto_cm: item.alto_cm,
+      ancho_cm: item.ancho_cm,
+      largo_cm: item.largo_cm,
     }));
 
     try {

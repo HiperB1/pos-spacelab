@@ -20,7 +20,15 @@ export interface ProductoVenndelo {
   list_price?: number | string;
   pricing?: { price?: number | string; sale_price?: number | string };
   variants?: Array<{ price?: number | string; unit_price?: number | string }>;
-  variations?: Array<{ price?: number | string; compare_at_price?: number | string }>;
+  variations?: Array<{
+    id?: string;
+    price?: number | string;
+    compare_at_price?: number | string;
+    weight?: number | string;
+    height?: number | string;
+    width?: number | string;
+    length?: number | string;
+  }>;
   category?: string;
   tags?: string[];
   [key: string]: unknown;
@@ -81,6 +89,11 @@ function toNumber(val: unknown): number {
   return isFinite(n) ? n : 0;
 }
 
+function extractDim(val: unknown): number | undefined {
+  const n = toNumber(val);
+  return n > 0 ? n : undefined;
+}
+
 function extractPrice(v: ProductoVenndelo): number {
   const candidates = [
     v.unit_price,
@@ -103,25 +116,58 @@ function extractPrice(v: ProductoVenndelo): number {
 }
 
 function mapVenndeloProduct(v: ProductoVenndelo) {
+  const variation = v.variations?.[0];
+  const peso = extractDim(variation?.weight);
+  const alto = extractDim(variation?.height);
+  const ancho = extractDim(variation?.width);
+  const largo = extractDim(variation?.length);
+
   return {
     venndelo_id: v.id,
+    ...(variation?.id ? { venndelo_variation_id: variation.id } : {}),
     nome: v.name || v.title || `Producto ${v.id}`,
     descripcion: v.description || '',
     preco: extractPrice(v),
     codigo: v.sku || v.code || v.reference || undefined,
     categoria: v.category || undefined,
     tags: Array.isArray(v.tags) && v.tags.length > 0 ? v.tags : undefined,
+    ...(peso !== undefined ? { peso_kg: peso } : {}),
+    ...(alto !== undefined ? { alto_cm: alto } : {}),
+    ...(ancho !== undefined ? { ancho_cm: ancho } : {}),
+    ...(largo !== undefined ? { largo_cm: largo } : {}),
   };
 }
 
 // Upsert de productos desde Venndelo. Estrategia de coincidencia en orden de prioridad:
 // 1. venndelo_id (productos ya enlazados); 2. codigo/SKU (productos locales pre-existentes).
+// Solo actualiza si los datos de Venndelo difieren del registro local.
 // Productos locales sin match en Venndelo no se modifican.
+function productoHaCambiado(existing: ReturnType<typeof getProdutos>[0], mapped: ReturnType<typeof mapVenndeloProduct>): boolean {
+  if (existing.nome !== mapped.nome) return true;
+  if ((existing.descripcion ?? '') !== (mapped.descripcion ?? '')) return true;
+  if (existing.preco !== mapped.preco) return true;
+  if ((existing.codigo ?? undefined) !== (mapped.codigo ?? undefined)) return true;
+  if ((existing.categoria ?? undefined) !== (mapped.categoria ?? undefined)) return true;
+  if ((existing.venndelo_id ?? undefined) !== (mapped.venndelo_id ?? undefined)) return true;
+  if ((existing.venndelo_variation_id ?? undefined) !== (mapped.venndelo_variation_id ?? undefined)) return true;
+  if (mapped.peso_kg !== undefined && existing.peso_kg !== mapped.peso_kg) return true;
+  if (mapped.alto_cm !== undefined && existing.alto_cm !== mapped.alto_cm) return true;
+  if (mapped.ancho_cm !== undefined && existing.ancho_cm !== mapped.ancho_cm) return true;
+  if (mapped.largo_cm !== undefined && existing.largo_cm !== mapped.largo_cm) return true;
+  const tagsExisting = (existing.tags ?? []).slice().sort().join(',');
+  const tagsMapped = (mapped.tags ?? []).slice().sort().join(',');
+  if (tagsExisting !== tagsMapped) return true;
+  return false;
+}
+
 export async function sincronizarProductosVenndelo(): Promise<{
   creados: number;
   actualizados: number;
+  actualizadosEnVenndelo: number;
+  sinCambios: number;
   total: number;
 }> {
+  const config = getConfiguracion();
   const remotos = await getProductosVenndelo();
   const locales = getProdutos();
 
@@ -134,6 +180,10 @@ export async function sincronizarProductosVenndelo(): Promise<{
 
   let creados = 0;
   let actualizados = 0;
+  let actualizadosEnVenndelo = 0;
+  let sinCambios = 0;
+
+  const pushTasks: Array<() => Promise<void>> = [];
 
   for (const remoto of remotos) {
     const mapped = mapVenndeloProduct(remoto);
@@ -141,17 +191,94 @@ export async function sincronizarProductosVenndelo(): Promise<{
       byVenndeloId.get(remoto.id) ||
       (mapped.codigo ? byCodigo.get(mapped.codigo) : undefined);
 
+    const variation = remoto.variations?.[0];
+    const venndeloTieneDims = toNumber(variation?.weight) > 0;
+
     if (existing) {
-      updateProductRow(existing.id, {
-        venndelo_id: mapped.venndelo_id,
-        nome: mapped.nome,
-        descripcion: mapped.descripcion,
-        preco: mapped.preco,
-        codigo: mapped.codigo,
-        categoria: mapped.categoria,
-        tags: mapped.tags,
-      });
-      actualizados++;
+      if (venndeloTieneDims) {
+        // Fase 1: Venndelo tiene dims válidas → actualizar local si algo cambió
+        if (productoHaCambiado(existing, mapped)) {
+          updateProductRow(existing.id, {
+            venndelo_id: mapped.venndelo_id,
+            ...(mapped.venndelo_variation_id ? { venndelo_variation_id: mapped.venndelo_variation_id } : {}),
+            nome: mapped.nome,
+            descripcion: mapped.descripcion,
+            preco: mapped.preco,
+            codigo: mapped.codigo,
+            categoria: mapped.categoria,
+            tags: mapped.tags,
+            ...(mapped.peso_kg !== undefined ? { peso_kg: mapped.peso_kg } : {}),
+            ...(mapped.alto_cm !== undefined ? { alto_cm: mapped.alto_cm } : {}),
+            ...(mapped.ancho_cm !== undefined ? { ancho_cm: mapped.ancho_cm } : {}),
+            ...(mapped.largo_cm !== undefined ? { largo_cm: mapped.largo_cm } : {}),
+          });
+          actualizados++;
+        } else {
+          sinCambios++;
+        }
+      } else {
+        // Fase 2: Venndelo NO tiene dims → determinar dims a usar y hacer PUT
+        const variacionId = existing.venndelo_variation_id || mapped.venndelo_variation_id;
+        if (variacionId) {
+          const pesoFinal = (existing.peso_kg && existing.peso_kg > 0)
+            ? existing.peso_kg
+            : (config.peso_default_kg ?? 0.5);
+          const altoFinal = (existing.alto_cm && existing.alto_cm > 0)
+            ? existing.alto_cm
+            : (config.alto_default_cm ?? 15);
+          const anchoFinal = (existing.ancho_cm && existing.ancho_cm > 0)
+            ? existing.ancho_cm
+            : (config.ancho_default_cm ?? 20);
+          const largoFinal = (existing.largo_cm && existing.largo_cm > 0)
+            ? existing.largo_cm
+            : (config.largo_default_cm ?? 20);
+
+          // Actualizar local primero
+          updateProductRow(existing.id, {
+            venndelo_id: mapped.venndelo_id,
+            venndelo_variation_id: variacionId,
+            nome: mapped.nome,
+            descripcion: mapped.descripcion,
+            preco: mapped.preco,
+            codigo: mapped.codigo,
+            categoria: mapped.categoria,
+            tags: mapped.tags,
+            peso_kg: pesoFinal,
+            alto_cm: altoFinal,
+            ancho_cm: anchoFinal,
+            largo_cm: largoFinal,
+          });
+
+          // Encolar push a Venndelo
+          const productoId = remoto.id;
+          const varId = variacionId;
+          const precio = (mapped.preco && mapped.preco > 0) ? mapped.preco : existing.preco;
+          pushTasks.push(() => updateVariacionVenndelo(productoId, varId, {
+            peso_kg: pesoFinal,
+            alto_cm: altoFinal,
+            ancho_cm: anchoFinal,
+            largo_cm: largoFinal,
+            precio,
+          }));
+        } else {
+          // Sin variation_id → solo actualizar campos básicos si cambiaron
+          if (productoHaCambiado(existing, mapped)) {
+            updateProductRow(existing.id, {
+              venndelo_id: mapped.venndelo_id,
+              ...(mapped.venndelo_variation_id ? { venndelo_variation_id: mapped.venndelo_variation_id } : {}),
+              nome: mapped.nome,
+              descripcion: mapped.descripcion,
+              preco: mapped.preco,
+              codigo: mapped.codigo,
+              categoria: mapped.categoria,
+              tags: mapped.tags,
+            });
+            actualizados++;
+          } else {
+            sinCambios++;
+          }
+        }
+      }
     } else {
       addProduto({
         ...mapped,
@@ -161,8 +288,21 @@ export async function sincronizarProductosVenndelo(): Promise<{
     }
   }
 
+  // Ejecutar pushes a Venndelo en paralelo (lotes de 10)
+  const BATCH = 10;
+  for (let i = 0; i < pushTasks.length; i += BATCH) {
+    const batch = pushTasks.slice(i, i + BATCH).map(fn => fn());
+    const results = await Promise.allSettled(batch);
+    actualizadosEnVenndelo += results.filter(r => r.status === 'fulfilled').length;
+    results.forEach((r, idx) => {
+      if (r.status === 'rejected') {
+        console.warn(`[sync] Push dims a Venndelo falló para producto ${i + idx}:`, r.reason);
+      }
+    });
+  }
+
   localStorage.setItem(VENNDELO_LAST_SYNC_KEY, new Date().toISOString());
-  return { creados, actualizados, total: remotos.length };
+  return { creados, actualizados, actualizadosEnVenndelo, sinCambios, total: remotos.length };
 }
 
 export function getVenndeloLastSync(): string | null {
@@ -173,6 +313,42 @@ export function shouldAutoSync(): boolean {
   const last = getVenndeloLastSync();
   if (!last) return true;
   return Date.now() - new Date(last).getTime() > 24 * 60 * 60 * 1000;
+}
+
+export async function updateVariacionVenndelo(
+  productoId: string,
+  variacionId: string,
+  data: { peso_kg: number; alto_cm: number; ancho_cm: number; largo_cm: number; precio: number }
+): Promise<void> {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('API key de Venndelo no configurada');
+
+  const body = {
+    price: data.precio,
+    weight: data.peso_kg,
+    height: data.alto_cm,
+    width: data.ancho_cm,
+    length: data.largo_cm,
+  };
+
+  const response = await fetch(`${VENNDELO_API_BASE}/products/${productoId}/variations/${variacionId}`, {
+    method: 'PUT',
+    headers: {
+      'X-Venndelo-Api-Key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let detail = '';
+    try {
+      const errJson = JSON.parse(errorText);
+      detail = errJson.message || errJson.detail || errJson.error || errorText.substring(0, 200);
+    } catch { detail = errorText.substring(0, 200); }
+    throw new Error(`Error al actualizar variación en Venndelo (${response.status}): ${detail}`);
+  }
 }
 
 export async function getCiudades(): Promise<CiudadVenndelo[]> {
@@ -271,7 +447,7 @@ export type CreateOrderResult = {
 
 export async function createOrder(
   factura: Factura,
-  items: { descripcion: string; quantidade: number; precio: number; venndelo_id?: string; codigo?: string }[],
+  items: { descripcion: string; quantidade: number; precio: number; venndelo_id?: string; codigo?: string; peso_kg?: number; alto_cm?: number; ancho_cm?: number; largo_cm?: number }[],
   apiKey: string,
   config: { ciudad_origen: string; empresa_nome: string; empresa_telefono: string; empresa_direccion: string }
 ): Promise<CreateOrderResult | null> {
@@ -316,12 +492,12 @@ export async function createOrder(
       name: item.descripcion,
       unit_price: item.precio,
       quantity: item.quantidade,
-      weight: 0.5,
+      weight: item.peso_kg ?? 0.5,
       weight_unit: 'KG',
       dimensions_unit: 'CM',
-      height: 15,
-      width: 20,
-      length: 20,
+      height: item.alto_cm ?? 15,
+      width: item.ancho_cm ?? 20,
+      length: item.largo_cm ?? 20,
       type: 'STANDARD'
     })),
     payment_method_code: factura.payment_method_code || 'EXTERNAL_PAYMENT',

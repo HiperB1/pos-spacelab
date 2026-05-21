@@ -247,7 +247,8 @@ export async function cotizarEnvio(
   pesoKg: number,
   subdivisionDestino?: string,
   paymentMethodCode: string = 'EXTERNAL_PAYMENT',
-  unitPrice: number = 0
+  unitPrice: number = 0,
+  dimensiones?: { alto: number; ancho: number; largo: number }
 ): Promise<CotizacionEnvioResult[]> {
   const config = getConfiguracion();
   const apiKey = config.api_key_venndelo;
@@ -281,9 +282,9 @@ export async function cotizarEnvio(
             sku: 'ITEM-001',
             name: 'Producto',
             unit_price: unitPrice,
-            height: 15,
-            width: 20,
-            length: 20,
+            height: dimensiones?.alto ?? 15,
+            width: dimensiones?.ancho ?? 20,
+            length: dimensiones?.largo ?? 20,
             dimensions_unit: 'CM',
             weight: pesoKg || pesoDefault,
             weight_unit: 'KG',
@@ -324,10 +325,11 @@ export async function cotizarEnvioSimple(
   pesoKg?: number,
   subdivisionDestino?: string,
   paymentMethodCode: string = 'EXTERNAL_PAYMENT',
-  unitPrice: number = 0
+  unitPrice: number = 0,
+  dimensiones?: { alto: number; ancho: number; largo: number }
 ): Promise<number> {
   try {
-    const quotes = await cotizarEnvio(ciudadDestino, pesoKg || 0.5, subdivisionDestino, paymentMethodCode, unitPrice);
+    const quotes = await cotizarEnvio(ciudadDestino, pesoKg || 0.5, subdivisionDestino, paymentMethodCode, unitPrice, dimensiones);
     if (quotes.length > 0) {
       return quotes[0].price;
     }

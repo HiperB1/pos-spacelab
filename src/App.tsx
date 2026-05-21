@@ -63,10 +63,12 @@ function AppContent() {
         try {
           const result = await sincronizarProductosVenndelo();
           console.log('[APP] Auto-sync complete:', result);
-          if (result.creados > 0 || result.actualizados > 0) {
-            toast.info(
-              `Productos sincronizados con Venndelo: ${result.creados} nuevos, ${result.actualizados} actualizados`
-            );
+          if (result.creados > 0 || result.actualizados > 0 || result.actualizadosEnVenndelo > 0) {
+            const partes = [];
+            if (result.creados > 0) partes.push(`${result.creados} nuevos`);
+            if (result.actualizados > 0) partes.push(`${result.actualizados} actualizados`);
+            if (result.actualizadosEnVenndelo > 0) partes.push(`${result.actualizadosEnVenndelo} dims enviadas a Venndelo`);
+            toast.info(`Productos sincronizados: ${partes.join(', ')}`);
           }
         } catch (e) {
           console.warn('[APP] Auto-sync fallido (silencioso):', e);
