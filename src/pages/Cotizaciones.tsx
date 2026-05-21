@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getCotizaciones, getSiguienteNumeroCotizacion, createCotizacion, getClientes, updateCotizacionEstado, deleteCotizacion, getConfiguracion, getCotizacion, getProdutos, getCombos } from '../lib/database';
 import { gerarPDFCotizacion } from '../lib/pdf';
-import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult } from '../lib/envio';
+import { cotizarEnvio, getCiudadesCotizacion, CotizacionEnvioResult, type ItemEnvio } from '../lib/envio';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -45,6 +45,10 @@ interface ItemCotizacion {
   descripcion: string;
   quantidade: number;
   precio: number;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
 }
 
 export function Cotizaciones() {
@@ -71,7 +75,6 @@ export function Cotizaciones() {
   
   const [ciudadDestino, setCiudadDestino] = useState('');
   const [subdivisionDestino, setSubdivisionDestino] = useState('');
-  const [pesoKg, setPesoKg] = useState(0.5);
   const [costoEnvio, setCostoEnvio] = useState(0);
   const [cargandoEnvio, setCargandoEnvio] = useState(false);
   const [quotesDisponibles, setQuotesDisponibles] = useState<CotizacionEnvioResult[]>([]);
@@ -172,6 +175,10 @@ export function Cotizaciones() {
         newItems[index].produto_id = id;
         newItems[index].descripcion = prod?.nome || '';
         newItems[index].precio = prod?.preco || 0;
+        newItems[index].peso_kg = prod?.peso_kg;
+        newItems[index].alto_cm = prod?.alto_cm;
+        newItems[index].ancho_cm = prod?.ancho_cm;
+        newItems[index].largo_cm = prod?.largo_cm;
       }
     }
     setItems(newItems);
@@ -198,7 +205,13 @@ export function Cotizaciones() {
     setCargandoEnvio(true);
     try {
       const subtotalActual = items.reduce((sum: number, i: any) => sum + (i.quantidade * i.precio), 0);
-      const quotes = await cotizarEnvio(ciudadDestino, pesoKg, subdivisionDestino, paymentMethod, subtotalActual);
+      const quotes = await cotizarEnvio(
+        ciudadDestino,
+        itemsValidos as ItemEnvio[],
+        subdivisionDestino,
+        paymentMethod,
+        subtotalActual
+      );
       setQuotesDisponibles(quotes);
       
       if (quotes.length > 0) {
@@ -273,7 +286,6 @@ export function Cotizaciones() {
     setItems([{ tipo_item: 'manual', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
     setCiudadDestino('');
     setSubdivisionDestino('');
-    setPesoKg(0.5);
     setCostoEnvio(0);
     setQuotesDisponibles([]);
     setQuoteSeleccionado(null);
@@ -479,16 +491,7 @@ export function Cotizaciones() {
                     ]}
                   />
                 </div>
-                <div>
-                  <Input 
-                    label="Peso del envío (kg)" 
-                    type="number" 
-                    step="0.1"
-                    min="0.1"
-                    value={pesoKg} 
-                    onChange={e => setPesoKg(parseFloat(e.target.value) || 0.5)} 
-                  />
-                </div>
+
                 
                 {ciudadDestino && (
                   <>
