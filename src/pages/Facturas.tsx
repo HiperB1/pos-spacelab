@@ -666,92 +666,7 @@ export function Facturas() {
   }
 
   async function handleViewGuia(factura: any) {
-    // Si ya tenemos la guía descargada localmente, abrirla directamente
-    if (factura.venndelo_label_local_path) {
-      await openLocalGuide(factura.venndelo_label_local_path, factura.venndelo_label_url);
-      return;
-    }
-
-    // Si tenemos la URL pero no la descarga local, descargar primero
-    if (factura.venndelo_label_url) {
-      const toastId = toast.loading('Descargando guía...');
-      const filename = `guia_${factura.numero}.pdf`;
-      const localPath = await downloadGuideLocally(factura.venndelo_label_url, filename);
-      if (localPath) {
-        updateFacturaVenndelo(factura.id, {
-          venndeloOrderId: factura.venndelo_order_id,
-          venndeloLabelLocalPath: localPath
-        });
-        loadData();
-        toast.success('Guía descargada', { id: toastId });
-        await openLocalGuide(localPath, factura.venndelo_label_url);
-      } else {
-        // Fallback: abrir URL directamente
-        toast.warning('No se pudo descargar localmente. Abriendo en el navegador...', { id: toastId });
-        await openExternalUrl(factura.venndelo_label_url);
-      }
-      return;
-    }
-
-    if (!factura.venndelo_order_id) {
-      toast.error('Esta factura no tiene un pedido Venndelo asociado');
-      return;
-    }
-
-    const config = getConfiguracion();
-    if (!config.api_key_venndelo) {
-      toast.warning('API Key de Venndelo no configurada');
-      return;
-    }
-
-    const toastId = toast.loading('Generando guía de envío...');
-
-    let hasShipment = false;
-    try {
-      const orderInfo = await getOrder(factura.venndelo_order_id, config.api_key_venndelo);
-      hasShipment = Array.isArray(orderInfo?.shipments) && orderInfo.shipments.length > 0;
-    } catch (_e) {}
-
-    if (!hasShipment) {
-      try {
-        await createShipment(factura.venndelo_order_id, config.api_key_venndelo);
-      } catch (e: any) {
-        const errMsg = e?.message || 'Error desconocido';
-        if (!errMsg.includes('500') && !errMsg.includes('Internal server error')) {
-          toast.warning('No se pudo crear el envío: ' + errMsg + '. Ve al panel de Venndelo.', { id: toastId, duration: 8000 });
-          return;
-        }
-      }
-    }
-
-    let label: { labelUrl: string; tracking: string };
-    try {
-      label = await generateLabel(factura.venndelo_order_id, config.api_key_venndelo);
-    } catch (e: any) {
-      toast.warning('La guía aún no está disponible: ' + (e?.message || 'Error desconocido') + '. Intenta más tarde.', { id: toastId, duration: 8000 });
-      return;
-    }
-
-    // Descargar localmente
-    const filename = `guia_${factura.numero}.pdf`;
-    const localPath = await downloadGuideLocally(label.labelUrl, filename);
-
-    updateFacturaVenndelo(factura.id, {
-      venndeloOrderId: factura.venndelo_order_id,
-      tracking: label.tracking,
-      labelUrl: label.labelUrl,
-      shipmentCreated: true,
-      venndeloLabelLocalPath: localPath || undefined
-    });
-    loadData();
-
-    if (localPath) {
-      toast.success('Guía generada y descargada', { id: toastId });
-      await openLocalGuide(localPath, label.labelUrl);
-    } else {
-      toast.success('Guía generada', { id: toastId });
-      await openExternalUrl(label.labelUrl);
-    }
+    await gerarPDFGuia(factura);
   }
 
   async function handleViewVenndeloOrder(factura: any) {
@@ -913,9 +828,11 @@ export function Facturas() {
           <Button variant="secondary" size="sm" onClick={() => handleViewPDF(item)} title="Ver Factura">
             <FileText className="w-4 h-4 mr-1" /> PDF
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => handleViewGuia(item)} title="Generar Guía de Envío">
-            <Truck className="w-4 h-4 mr-1" /> Guía
-          </Button>
+          {item.tipo_pedido !== 'nacional' && (
+            <Button variant="secondary" size="sm" onClick={() => handleViewGuia(item)} title="Generar Guía de Envío Local">
+              <Truck className="w-4 h-4 mr-1" /> Guía
+            </Button>
+          )}
           {item.tipo_pedido === 'nacional' && (
             <Button variant="secondary" size="sm" onClick={() => handleViewVenndeloOrder(item)} title="Ver detalles del pedido Venndelo">
               <Eye className="w-4 h-4 mr-1" /> Orden

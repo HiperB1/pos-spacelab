@@ -238,128 +238,56 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
 
 export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }): Promise<void> {
   const toastId = toast.loading('Generando Guía de Envío...');
-  
+
   const config = db.getConfiguracion();
   const empresaNome = config.empresa_nome || 'My Space';
 
-  let logoBase64 = '';
-  try {
-    logoBase64 = await getBase64ImageFromURL('/myspace-logo.png');
-  } catch (e) {
-    console.error('Error cargando logo:', e);
-  }
+  // 95mm × 95mm en puntos (1mm = 2.8346pt)
+  const SIZE_PT = 269.3;
+
+  const contenidoItems = factura.items
+    .map((item) => `${item.descripcion} × ${item.quantidade}`)
+    .join('\n');
 
   const docDefinition: any = {
-    pageSize: 'LETTER',
-    pageMargins: [40, 40, 40, 40],
+    pageSize: { width: SIZE_PT, height: SIZE_PT },
+    pageMargins: [8, 8, 8, 8],
     content: [
+      // Cabecera: empresa + número de referencia
       {
         columns: [
-          logoBase64 ? {
-            image: logoBase64,
-            width: 150,
-          } : { text: empresaNome, style: 'header', width: '*' },
-          {
-            stack: [
-              { text: 'GUÍA DE ENVÍO', style: 'title', alignment: 'right' },
-              { text: `Ref: ${factura.numero}`, style: 'invoiceNumber', alignment: 'right' },
-              { text: factura.fecha, style: 'subheader', alignment: 'right' }
-            ],
-            width: '*'
-          }
+          { text: empresaNome, style: 'empresa', width: '*' },
+          { text: factura.numero, style: 'refNum', alignment: 'right', width: 'auto' }
         ],
-        margin: [0, 0, 0, 30]
+        margin: [0, 0, 0, 4]
       },
-      {
-        stack: [
-          { text: 'DESTINATARIO', style: 'sectionTitle' },
-          { text: factura.cliente_nome.toUpperCase(), style: 'clienteNomeBig' },
-          { 
-            columns: [
-              { text: 'DIRECCIÓN:', style: 'labelInfo', width: 80 },
-              { text: factura.cliente_direccion || 'No especificada', style: 'valueInfo' }
-            ],
-            margin: [0, 5, 0, 2]
-          },
-          { 
-            columns: [
-              { text: 'TELÉFONO:', style: 'labelInfo', width: 80 },
-              { text: factura.cliente_celular || 'No especificado', style: 'valueInfo' }
-            ],
-            margin: [0, 0, 0, 2]
-          }
-        ],
-        margin: [0, 0, 0, 30],
-        padding: [20, 20, 20, 20],
-        background: '#f8f8f8'
-      },
-      { text: 'CONTENIDO DEL ENVÍO', style: 'sectionTitle', margin: [0, 0, 0, 10] },
-      {
-        table: {
-          headerRows: 1,
-          widths: ['*', 100],
-          body: [
-            [
-              { text: 'DESCRIPCIÓN DEL PRODUCTO', style: 'tableHeader' },
-              { text: 'CANTIDAD', style: 'tableHeader', alignment: 'center' }
-            ],
-            ...factura.items.map((item) => [
-              { text: item.descripcion, style: 'tableCell' },
-              { text: item.quantidade.toString(), style: 'tableCell', alignment: 'center' }
-            ])
-          ]
-        },
-        layout: 'lightHorizontalLines',
-        margin: [0, 0, 0, 20]
-      },
-      ...(factura.venndelo_order_id ? [
-        { text: 'DATOS DEL ENVÍO (VENNDELO)', style: 'sectionTitle', margin: [0, 10, 0, 5] },
-        {
-          columns: [
-            { text: 'Order ID:', style: 'labelInfo', width: 80 },
-            { text: factura.venndelo_order_id, style: 'valueInfo' }
-          ],
-          margin: [0, 5, 0, 2]
-        },
-        ...(factura.venndelo_tracking ? [{
-          columns: [
-            { text: 'Tracking:', style: 'labelInfo', width: 80 },
-            { text: factura.venndelo_tracking, style: 'valueInfo' }
-          ],
-          margin: [0, 0, 0, 2]
-        }] : []),
-      ] : []),
-      ...(factura.notas ? [
-        { text: 'NOTAS ADICIONALES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
-        { text: factura.notas, style: 'empresaInfo' }
-      ] : []),
-      {
-        stack: [
-          { text: 'REMITENTE', style: 'sectionTitle', margin: [0, 40, 0, 5] },
-          { text: empresaNome, style: 'empresaNome' },
-          { text: config.empresa_direccion, style: 'empresaInfo' },
-          { text: `Tel: ${config.empresa_telefono}`, style: 'empresaInfo' }
-        ],
-        alignment: 'right'
-      }
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#999' }], margin: [0, 0, 0, 5] },
+      // Destinatario
+      { text: 'PARA:', style: 'label', margin: [0, 0, 0, 1] },
+      { text: factura.cliente_nome.toUpperCase(), style: 'destinatario', margin: [0, 0, 0, 2] },
+      { text: factura.cliente_direccion || '—', style: 'direccion', margin: [0, 0, 0, 1] },
+      { text: `Tel: ${factura.cliente_celular || '—'}`, style: 'telefono', margin: [0, 0, 0, 5] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 4] },
+      // Contenido del paquete
+      { text: 'CONTENIDO:', style: 'label', margin: [0, 0, 0, 1] },
+      { text: contenidoItems || '—', style: 'contenido', margin: [0, 0, 0, 5] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 3] },
+      // Remitente
+      { text: `DE: ${empresaNome}  ·  ${config.empresa_telefono || ''}`, style: 'remitente' },
     ],
     styles: {
-      header: { fontSize: 24, bold: true, color: '#333' },
-      title: { fontSize: 20, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 14, bold: true, color: '#666' },
-      subheader: { fontSize: 10, color: '#999' },
-      sectionTitle: { fontSize: 10, bold: true, color: '#f97316', border: [0, 0, 0, 1] },
-      clienteNomeBig: { fontSize: 18, bold: true, margin: [0, 10, 0, 10] },
-      labelInfo: { fontSize: 10, bold: true, color: '#666' },
-      valueInfo: { fontSize: 12, bold: true },
-      empresaNome: { fontSize: 11, bold: true },
-      empresaInfo: { fontSize: 9, color: '#666' },
-      tableHeader: { fontSize: 10, bold: true, color: '#fff', fillColor: '#333', margin: [0, 5, 0, 5] },
-      tableCell: { fontSize: 11, margin: [0, 8, 0, 8] }
+      empresa: { fontSize: 7, bold: true, color: '#f97316' },
+      refNum: { fontSize: 7, bold: true, color: '#666' },
+      label: { fontSize: 6.5, bold: true, color: '#999' },
+      destinatario: { fontSize: 11, bold: true },
+      direccion: { fontSize: 7.5 },
+      telefono: { fontSize: 7.5 },
+      contenido: { fontSize: 7, color: '#333' },
+      remitente: { fontSize: 6.5, color: '#666' },
     },
     defaultStyle: { font: 'Roboto' }
   };
-  
+
   try {
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
