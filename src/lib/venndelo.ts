@@ -473,8 +473,9 @@ export async function createOrder(
       last_name: factura.cliente_apellido || '',
       email: factura.cliente_email || '',
       phone: factura.cliente_celular || '',
-      identification_type: factura.tipo_identificacion || 'CC',
-      identification: factura.cliente_nit || ''
+      ...(factura.cliente_nit?.trim()
+        ? { identification_type: factura.tipo_identificacion || 'CC', identification: factura.cliente_nit.trim() }
+        : {})
     },
     shipping_info: {
       first_name: factura.cliente_nome,
