@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getConfiguracion, updateConfiguracion } from '../lib/facturas';
 import { exportDatabaseToJSON, importDatabaseFromJSON, getLastBackupDate } from '../lib/backup';
+import { getTransactionalCounts, resetTransactionalData } from '../lib/database';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ChangelogModal } from '../components/ChangelogModal';
-import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles } from 'lucide-react';
+import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -19,6 +20,8 @@ export function ConfiguracionPage() {
   const [downloadProgress, setDownloadProgress] = useState({ downloaded: 0, total: 0 });
   const [updateInfo, setUpdateInfo] = useState<{ version: string; notes?: string } | null>(null);
   const [updateObj, setUpdateObj] = useState<Update | null>(null);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetCounts, setResetCounts] = useState({ facturas: 0, cotizaciones: 0, notas: 0 });
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setAppVersion).catch(() => {});
@@ -175,6 +178,18 @@ export function ConfiguracionPage() {
     };
     reader.readAsText(file);
     e.target.value = '';
+  }
+
+  function handleOpenResetModal() {
+    const counts = getTransactionalCounts();
+    setResetCounts({ facturas: counts.facturas, cotizaciones: counts.cotizaciones, notas: counts.notas });
+    setShowResetModal(true);
+  }
+
+  function handleConfirmReset() {
+    resetTransactionalData();
+    setShowResetModal(false);
+    window.location.reload();
   }
 
   const lastBackup = getLastBackupDate();
@@ -480,23 +495,38 @@ export function ConfiguracionPage() {
                   Importa un archivo previo. <span className="text-red-400 font-medium">Atención:</span> Esta acción sobrescribirá todos los datos actuales.
                 </p>
                 <label className="block">
-                  <Button 
-                    as="div" 
-                    variant="ghost" 
+                  <Button
+                    as="div"
+                    variant="ghost"
                     className="w-full gap-2 border border-dashed border-white/10 hover:border-primary/50"
                     onClick={() => document.getElementById('import-backup-input')?.click()}
                   >
                     <Upload className="w-4 h-4" />
                     Cargar Archivo
                   </Button>
-                  <input 
-                    id="import-backup-input" 
-                    type="file" 
-                    accept=".json" 
-                    onChange={handleImportBackup} 
-                    style={{ display: 'none' }} 
+                  <input
+                    id="import-backup-input"
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    style={{ display: 'none' }}
                   />
                 </label>
+              </div>
+
+              <div className="pt-6 border-t border-white/5">
+                <h4 className="text-sm font-medium text-white/70 mb-2">Formatear datos</h4>
+                <p className="text-sm text-text-secondary mb-4">
+                  Elimina facturas, cotizaciones, notas de crédito y contabilidad. La configuración e inventario no se ven afectados.
+                </p>
+                <Button
+                  variant="ghost"
+                  className="w-full gap-2 border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/60 hover:text-red-300"
+                  onClick={handleOpenResetModal}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Formatear datos
+                </Button>
               </div>
             </div>
           </div>
@@ -504,6 +534,45 @@ export function ConfiguracionPage() {
       </div>
 
       <ChangelogModal show={showChangelog} onClose={() => setShowChangelog(false)} />
+
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-white/10 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-500/10 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">Formatear datos</h3>
+            </div>
+
+            <p className="text-sm text-text-secondary">
+              Esta acción eliminará permanentemente:
+            </p>
+            <ul className="text-sm text-text-secondary space-y-1 list-disc list-inside">
+              <li><span className="text-white font-medium">{resetCounts.facturas}</span> facturas</li>
+              <li><span className="text-white font-medium">{resetCounts.cotizaciones}</span> cotizaciones</li>
+              <li><span className="text-white font-medium">{resetCounts.notas}</span> notas de crédito</li>
+              <li>Todos los abonos y domiciliarios</li>
+            </ul>
+            <p className="text-sm text-text-muted">
+              La configuración, clientes e inventario <strong className="text-white/70">no se verán afectados</strong>. El contador de facturas se reiniciará a 1.
+            </p>
+
+            <div className="flex justify-end gap-3 pt-1">
+              <Button variant="ghost" onClick={() => setShowResetModal(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="ghost"
+                className="border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:border-red-500/70"
+                onClick={handleConfirmReset}
+              >
+                Sí, formatear
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
