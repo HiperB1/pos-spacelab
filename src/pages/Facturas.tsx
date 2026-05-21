@@ -3,7 +3,7 @@ import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getCo
 import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
 import { getCiudades, createOrder, createShipment, generateLabel, getOrder, type CreateOrderResult } from '../lib/venndelo';
-import { cotizarEnvioSimple } from '../lib/envio';
+import { cotizarEnvioSimple, type ItemEnvio } from '../lib/envio';
 import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
@@ -327,23 +327,12 @@ export function Facturas() {
     try {
       const ciudad = ciudades.find(c => c.code === ciudadDestino);
       const subtotalActual = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
-      const pesoTotal = itemsValidos.reduce((sum, item) => {
-        const pesoUnidad = item.peso_kg ?? (config.peso_default_kg ?? 0.5);
-        return sum + pesoUnidad * item.quantidade;
-      }, 0);
-      const itemConDims = itemsValidos.find(i => i.alto_cm);
-      const dimensiones = itemConDims?.alto_cm ? {
-        alto: itemConDims.alto_cm,
-        ancho: itemConDims.ancho_cm ?? 20,
-        largo: itemConDims.largo_cm ?? 20,
-      } : undefined;
       const precio = await cotizarEnvioSimple(
         ciudadDestino,
-        pesoTotal || (config.peso_default_kg ?? 0.5),
+        itemsValidos as ItemEnvio[],
         ciudad?.subdivision_code,
         paymentMethod,
-        subtotalActual,
-        dimensiones
+        subtotalActual
       );
       setCostoEnvio(precio);
       setEnvioCalculado(true);

@@ -242,13 +242,22 @@ export function getCiudadesFallback(): CiudadVenndelo[] {
   ];
 }
 
+export interface ItemEnvio {
+  descripcion?: string;
+  quantidade: number;
+  precio: number;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
+}
+
 export async function cotizarEnvio(
   ciudadDestino: string,
-  pesoKg: number,
+  items: ItemEnvio[],
   subdivisionDestino?: string,
   paymentMethodCode: string = 'EXTERNAL_PAYMENT',
-  unitPrice: number = 0,
-  dimensiones?: { alto: number; ancho: number; largo: number }
+  unitPrice: number = 0
 ): Promise<CotizacionEnvioResult[]> {
   const config = getConfiguracion();
   const apiKey = config.api_key_venndelo;
@@ -259,6 +268,9 @@ export async function cotizarEnvio(
 
   const ciudadOrigen = config.ciudad_origen || '11001000';
   const pesoDefault = config.peso_default_kg || 0.5;
+  const altoDefault = config.alto_default_cm || 15;
+  const anchoDefault = config.ancho_default_cm || 20;
+  const largoDefault = config.largo_default_cm || 20;
 
   try {
     const response = await fetch(`${VENNDELO_API_BASE}/orders/quotation`, {
@@ -277,21 +289,19 @@ export async function cotizarEnvio(
           subdivision_code: subdivisionDestino || '',
           country_code: 'CO'
         },
-        line_items: [
-          {
-            sku: 'ITEM-001',
-            name: 'Producto',
-            unit_price: unitPrice,
-            height: dimensiones?.alto ?? 15,
-            width: dimensiones?.ancho ?? 20,
-            length: dimensiones?.largo ?? 20,
-            dimensions_unit: 'CM',
-            weight: pesoKg || pesoDefault,
-            weight_unit: 'KG',
-            quantity: 1,
-            type: 'STANDARD'
-          }
-        ],
+        line_items: items.map((item, idx) => ({
+          sku: `ITEM-${String(idx + 1).padStart(3, '0')}`,
+          name: item.descripcion || 'Producto',
+          unit_price: item.precio,
+          height: item.alto_cm ?? altoDefault,
+          width: item.ancho_cm ?? anchoDefault,
+          length: item.largo_cm ?? largoDefault,
+          dimensions_unit: 'CM',
+          weight: (item.peso_kg ?? pesoDefault) * item.quantidade,
+          weight_unit: 'KG',
+          quantity: item.quantidade,
+          type: 'STANDARD'
+        })),
         payment_method_code: paymentMethodCode
       })
     });
@@ -322,14 +332,13 @@ export async function cotizarEnvio(
 
 export async function cotizarEnvioSimple(
   ciudadDestino: string,
-  pesoKg?: number,
+  items: ItemEnvio[],
   subdivisionDestino?: string,
   paymentMethodCode: string = 'EXTERNAL_PAYMENT',
-  unitPrice: number = 0,
-  dimensiones?: { alto: number; ancho: number; largo: number }
+  unitPrice: number = 0
 ): Promise<number> {
   try {
-    const quotes = await cotizarEnvio(ciudadDestino, pesoKg || 0.5, subdivisionDestino, paymentMethodCode, unitPrice, dimensiones);
+    const quotes = await cotizarEnvio(ciudadDestino, items, subdivisionDestino, paymentMethodCode, unitPrice);
     if (quotes.length > 0) {
       return quotes[0].price;
     }
