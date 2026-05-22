@@ -46,15 +46,18 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
     console.error('Error cargando logo:', e);
   }
 
+  // 100mm × auto (height ajustada al contenido para no generar espacio en blanco)
+  const PAGE_W = 283.46; // 100mm en puntos
+
   const docDefinition: any = {
-    pageSize: 'LETTER',
-    pageMargins: [40, 40, 40, 40],
+    pageSize: { width: PAGE_W, height: 'auto' },
+    pageMargins: [10, 10, 10, 10],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 150,
+            width: 70,
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -65,7 +68,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 6]
       },
       {
         columns: [
@@ -91,17 +94,17 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 30]
+        margin: [0, 0, 0, 8]
       },
       {
         table: {
           headerRows: 1,
-          widths: ['*', 50, 80, 80],
+          widths: ['*', 22, 50, 50],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
               { text: 'CANT', style: 'tableHeader', alignment: 'center' },
-              { text: 'PRECIO UNIT.', style: 'tableHeader', alignment: 'right' },
+              { text: 'P. UNIT.', style: 'tableHeader', alignment: 'right' },
               { text: 'TOTAL', style: 'tableHeader', alignment: 'right' }
             ],
             ...factura.items.map((item) => [
@@ -116,106 +119,86 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
           hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
-          paddingLeft: () => 8,
-          paddingRight: () => 8,
-          paddingTop: () => 6,
-          paddingBottom: () => 6,
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
         },
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 8]
       },
       {
         columns: [
-          { 
+          {
             stack: [
               ...(factura.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 4, 0, 2] },
                 { text: factura.notas, style: 'empresaInfo' }
               ] : [])
             ],
-            width: '*' 
+            width: '*'
           },
           {
-            width: 200,
+            width: 130,
             stack: [
               {
                 columns: [
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(factura.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, 3]
               },
-              {
+              ...(factura.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
-                  { text: formatCurrency(factura.descuento || 0), style: 'totalValue' }
+                  { text: formatCurrency(factura.descuento), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5],
-                ...(factura.descuento > 0 ? {} : { opacity: 0 })
-              },
+                margin: [0, 0, 0, 3]
+              }] : []),
               ...(factura.costo_envio && factura.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(factura.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, 3]
               }] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [
                   { text: 'TOTAL A PAGAR', style: 'totalLabelBold' },
                   { text: formatCurrency(factura.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 8, 0, 0]
+                margin: [0, 4, 0, 0]
               }
             ]
           }
         ]
       },
       ...(factura.estado === 'anulada' ? [
-        { 
-          absolutePosition: { x: 0, y: 300 },
-          text: 'ANULADA', 
-          style: { 
-            fontSize: 80, 
-            bold: true, 
-            color: '#ff0000', 
-            opacity: 0.2, 
-            alignment: 'center',
-            angle: 45
-          } 
-        },
-        { 
-          text: 'ESTA FACTURA HA SIDO ANULADA', 
-          style: { color: 'red', bold: true, alignment: 'center' }, 
-          margin: [0, 40, 0, 0] 
+        {
+          text: '— FACTURA ANULADA —',
+          style: { color: 'red', bold: true, alignment: 'center', fontSize: 9 },
+          margin: [0, 8, 0, 2]
         },
         { text: `Motivo: ${factura.motivo_anulacion}`, style: 'empresaInfo', alignment: 'center' },
         { text: `Fecha anulación: ${factura.fecha_anulacion}`, style: 'empresaInfo', alignment: 'center' }
       ] : []),
-      {
-        stack: [
-          { text: '_______________________________________', alignment: 'center', margin: [0, 60, 0, 5] },
-          { text: 'RECIBÍ CONFORME', style: 'label', alignment: 'center' }
-        ],
-        margin: [0, 20, 0, 0]
-      }
     ],
     styles: {
-      header: { fontSize: 24, bold: true, color: '#333' },
-      title: { fontSize: 18, bold: true, color: '#f97316' }, // Orange color matching the UI
-      invoiceNumber: { fontSize: 14, bold: true, color: '#666' },
-      subheader: { fontSize: 10, color: '#999' },
-      sectionTitle: { fontSize: 9, bold: true, color: '#f97316', margin: [0, 0, 0, 5] },
-      empresaNome: { fontSize: 11, bold: true },
-      empresaInfo: { fontSize: 9, color: '#666' },
-      clienteNome: { fontSize: 11, bold: true },
-      tableHeader: { fontSize: 9, bold: true, color: '#fff', fillColor: '#333', margin: [0, 2, 0, 2] },
-      tableCell: { fontSize: 9, margin: [0, 2, 0, 2] },
-      totalLabel: { fontSize: 10, color: '#666', alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValue: { fontSize: 10, alignment: 'right' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 8, color: '#999' }
+      header: { fontSize: 10, bold: true, color: '#333' },
+      title: { fontSize: 9, bold: true, color: '#f97316' },
+      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
+      subheader: { fontSize: 7, color: '#999' },
+      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
+      empresaNome: { fontSize: 8, bold: true },
+      empresaInfo: { fontSize: 7, color: '#666' },
+      clienteNome: { fontSize: 8, bold: true },
+      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: 7, color: '#666', alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValue: { fontSize: 7, alignment: 'right' },
+      totalLabelBold: { fontSize: 8, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValueBold: { fontSize: 8, bold: true, alignment: 'right', color: '#f97316' },
+      label: { fontSize: 7, color: '#999' }
     },
     defaultStyle: { font: 'Roboto' }
   };
@@ -241,49 +224,104 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
 
   const config = db.getConfiguracion();
   const empresaNome = config.empresa_nome || 'My Space';
+  const empresaTelefono = config.empresa_telefono || '';
+  const empresaDireccion = config.empresa_direccion || '';
 
-  // 95mm × 95mm en puntos (1mm = 2.8346pt)
-  const SIZE_PT = 269.3;
+  // 100mm × auto (height ajustada al contenido)
+  const PAGE_W = 283.46; // 100mm en puntos
 
-  const contenidoItems = factura.items
-    .map((item) => `${item.descripcion} × ${item.quantidade}`)
-    .join('\n');
+  let logoBase64 = '';
+  try {
+    logoBase64 = await getBase64ImageFromURL('/myspace-logo.png');
+  } catch (e) {
+    console.error('Error cargando logo:', e);
+  }
 
   const docDefinition: any = {
-    pageSize: { width: SIZE_PT, height: SIZE_PT },
-    pageMargins: [8, 8, 8, 8],
+    pageSize: { width: PAGE_W, height: 'auto' },
+    pageMargins: [10, 10, 10, 10],
     content: [
-      // Cabecera: empresa + número de referencia
+      // Cabecera: logo + título
       {
         columns: [
-          { text: empresaNome, style: 'empresa', width: '*' },
-          { text: factura.numero, style: 'refNum', alignment: 'right', width: 'auto' }
+          logoBase64 ? {
+            image: logoBase64,
+            width: 70,
+          } : { text: empresaNome, style: 'header', width: '*' },
+          {
+            stack: [
+              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right' },
+              { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right' },
+              { text: factura.fecha, style: 'subheader', alignment: 'right' }
+            ],
+            width: '*'
+          }
         ],
-        margin: [0, 0, 0, 4]
+        margin: [0, 0, 0, 6]
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#999' }], margin: [0, 0, 0, 5] },
-      // Destinatario
-      { text: 'PARA:', style: 'label', margin: [0, 0, 0, 1] },
-      { text: factura.cliente_nome.toUpperCase(), style: 'destinatario', margin: [0, 0, 0, 2] },
-      { text: factura.cliente_direccion || '—', style: 'direccion', margin: [0, 0, 0, 1] },
-      { text: `Tel: ${factura.cliente_celular || '—'}`, style: 'telefono', margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 4] },
-      // Contenido del paquete
-      { text: 'CONTENIDO:', style: 'label', margin: [0, 0, 0, 1] },
-      { text: contenidoItems || '—', style: 'contenido', margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 3] },
-      // Remitente
-      { text: `DE: ${empresaNome}  ·  ${config.empresa_telefono || ''}`, style: 'remitente' },
+      // Secciones remitente / destinatario
+      {
+        columns: [
+          {
+            stack: [
+              { text: 'REMITENTE', style: 'sectionTitle' },
+              { text: empresaNome, style: 'empresaNome' },
+              { text: empresaDireccion, style: 'empresaInfo' },
+              { text: `Tel: ${empresaTelefono}`, style: 'empresaInfo' },
+            ],
+            width: '*'
+          },
+          {
+            stack: [
+              { text: 'DESTINATARIO', style: 'sectionTitle' },
+              { text: factura.cliente_nome.toUpperCase(), style: 'clienteNome' },
+              ...(factura.cliente_celular ? [{ text: `Tel: ${factura.cliente_celular}`, style: 'empresaInfo' }] : []),
+              ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
+            ],
+            width: '*'
+          }
+        ],
+        margin: [0, 0, 0, 8]
+      },
+      // Tabla de contenido del paquete
+      {
+        table: {
+          headerRows: 1,
+          widths: ['*', 40],
+          body: [
+            [
+              { text: 'DESCRIPCIÓN', style: 'tableHeader' },
+              { text: 'CANT', style: 'tableHeader', alignment: 'center' },
+            ],
+            ...factura.items.map((item) => [
+              { text: item.descripcion, style: 'tableCell' },
+              { text: item.quantidade.toString(), style: 'tableCell', alignment: 'center' },
+            ])
+          ]
+        },
+        layout: {
+          hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
+          vLineWidth: () => 0,
+          hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
+        },
+        margin: [0, 0, 0, 0]
+      },
     ],
     styles: {
-      empresa: { fontSize: 7, bold: true, color: '#f97316' },
-      refNum: { fontSize: 7, bold: true, color: '#666' },
-      label: { fontSize: 6.5, bold: true, color: '#999' },
-      destinatario: { fontSize: 11, bold: true },
-      direccion: { fontSize: 7.5 },
-      telefono: { fontSize: 7.5 },
-      contenido: { fontSize: 7, color: '#333' },
-      remitente: { fontSize: 6.5, color: '#666' },
+      header: { fontSize: 10, bold: true, color: '#333' },
+      title: { fontSize: 9, bold: true, color: '#f97316' },
+      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
+      subheader: { fontSize: 7, color: '#999' },
+      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
+      empresaNome: { fontSize: 8, bold: true },
+      empresaInfo: { fontSize: 7, color: '#666' },
+      clienteNome: { fontSize: 8, bold: true },
+      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
     },
     defaultStyle: { font: 'Roboto' }
   };
@@ -322,16 +360,19 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
   }
 
   const items = cotizacion.items || [];
-  
+
+  // 100mm × auto (height ajustada al contenido para no generar espacio en blanco)
+  const PAGE_W = 283.46; // 100mm en puntos
+
   const docDefinition: any = {
-    pageSize: 'LETTER',
-    pageMargins: [40, 40, 40, 40],
+    pageSize: { width: PAGE_W, height: 'auto' },
+    pageMargins: [10, 10, 10, 10],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 150,
+            width: 70,
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -343,7 +384,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 6]
       },
       {
         columns: [
@@ -370,22 +411,22 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 30]
+        margin: [0, 0, 0, 8]
       },
       {
         text: 'DETALLE DE LA COTIZACIÓN',
         style: 'sectionTitle',
-        margin: [0, 0, 0, 10]
+        margin: [0, 0, 0, 4]
       },
       {
         table: {
           headerRows: 1,
-          widths: ['*', 50, 80, 80],
+          widths: ['*', 22, 50, 50],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
               { text: 'CANT', style: 'tableHeader', alignment: 'center' },
-              { text: 'PRECIO UNIT.', style: 'tableHeader', alignment: 'right' },
+              { text: 'P. UNIT.', style: 'tableHeader', alignment: 'right' },
               { text: 'TOTAL', style: 'tableHeader', alignment: 'right' }
             ],
             ...items.map((item: any) => [
@@ -400,103 +441,93 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
           hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
-          paddingLeft: () => 8,
-          paddingRight: () => 8,
-          paddingTop: () => 6,
-          paddingBottom: () => 6,
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
         },
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 8]
       },
       {
         columns: [
-          { 
+          {
             stack: [
               ...(cotizacion.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 4, 0, 2] },
                 { text: cotizacion.notas, style: 'empresaInfo' }
               ] : []),
-              { text: 'Validez: Esta cotización tiene vigencia de ' + cotizacion.validez_dias + ' días.', style: 'validityNote', margin: [0, 20, 0, 0] }
+              { text: `Vigencia: ${cotizacion.validez_dias} días.`, style: 'validityNote', margin: [0, 4, 0, 0] }
             ],
-            width: '*' 
+            width: '*'
           },
           {
-            width: 200,
+            width: 130,
             stack: [
               {
                 columns: [
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, 3]
               },
               ...(cotizacion.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
                   { text: '-' + formatCurrency(cotizacion.descuento), style: 'totalValueDiscount' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, 3]
               }] : []),
               ...(cotizacion.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, 3]
               }] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [
                   { text: 'TOTAL', style: 'totalLabelBold' },
                   { text: formatCurrency(cotizacion.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 8, 0, 0]
+                margin: [0, 4, 0, 0]
               }
             ]
           }
         ]
       },
       ...(cotizacion.estado !== 'abierta' ? [
-        { 
-          absolutePosition: { x: 0, y: 300 },
-          text: cotizacion.estado.toUpperCase(), 
-          style: { 
-            fontSize: 80, 
-            bold: true, 
-            color: cotizacion.estado === 'aprobada' ? '#22c55e' : cotizacion.estado === 'rechazada' ? '#ef4444' : '#eab308', 
-            opacity: 0.2, 
+        {
+          text: `— ${cotizacion.estado.toUpperCase()} —`,
+          style: {
+            fontSize: 9,
+            bold: true,
             alignment: 'center',
-            angle: 45
-          } 
+            color: cotizacion.estado === 'aprobada' ? '#22c55e' : cotizacion.estado === 'rechazada' ? '#ef4444' : '#eab308'
+          },
+          margin: [0, 8, 0, 0]
         }
       ] : []),
-      {
-        stack: [
-          { text: '_______________________________________', alignment: 'center', margin: [0, 60, 0, 5] },
-          { text: 'FIRMA CLIENTE', style: 'label', alignment: 'center' },
-          { text: 'Aceptación de cotización', style: 'label', alignment: 'center', margin: [0, 5, 0, 0] }
-        ],
-        margin: [0, 20, 0, 0]
-      }
     ],
     styles: {
-      header: { fontSize: 24, bold: true, color: '#333' },
-      title: { fontSize: 18, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 14, bold: true, color: '#666' },
-      subheader: { fontSize: 10, color: '#999' },
-      subheaderHighlight: { fontSize: 10, bold: true, color: '#f97316' },
-      sectionTitle: { fontSize: 9, bold: true, color: '#f97316', margin: [0, 0, 0, 5] },
-      empresaNome: { fontSize: 11, bold: true },
-      empresaInfo: { fontSize: 9, color: '#666' },
-      clienteNome: { fontSize: 11, bold: true },
-      tableHeader: { fontSize: 9, bold: true, color: '#fff', fillColor: '#333', margin: [0, 2, 0, 2] },
-      tableCell: { fontSize: 9, margin: [0, 2, 0, 2] },
-      totalLabel: { fontSize: 10, color: '#666', alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValue: { fontSize: 10, alignment: 'right' },
-      totalValueDiscount: { fontSize: 10, alignment: 'right', color: '#22c55e' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 8, color: '#999' },
-      validityNote: { fontSize: 9, color: '#666', italics: true }
+      header: { fontSize: 10, bold: true, color: '#333' },
+      title: { fontSize: 9, bold: true, color: '#f97316' },
+      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
+      subheader: { fontSize: 7, color: '#999' },
+      subheaderHighlight: { fontSize: 7, bold: true, color: '#f97316' },
+      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
+      empresaNome: { fontSize: 8, bold: true },
+      empresaInfo: { fontSize: 7, color: '#666' },
+      clienteNome: { fontSize: 8, bold: true },
+      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: 7, color: '#666', alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValue: { fontSize: 7, alignment: 'right' },
+      totalValueDiscount: { fontSize: 7, alignment: 'right', color: '#22c55e' },
+      totalLabelBold: { fontSize: 8, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValueBold: { fontSize: 8, bold: true, alignment: 'right', color: '#f97316' },
+      label: { fontSize: 7, color: '#999' },
+      validityNote: { fontSize: 7, color: '#666', italics: true }
     },
     defaultStyle: { font: 'Roboto' }
   };
