@@ -700,3 +700,32 @@ export async function getOrder(
     return null;
   }
 }
+
+export async function cancelOrder(
+  orderId: string,
+  apiKey: string
+): Promise<{ success: boolean; alreadyCancelled?: boolean }> {
+  const response = await fetch(`${VENNDELO_API_BASE}/orders/${orderId}/cancel`, {
+    method: 'POST',
+    headers: {
+      'X-Venndelo-Api-Key': apiKey,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (response.ok) return { success: true };
+
+  const errorText = await response.text();
+  let detail = '';
+  try {
+    const errJson = JSON.parse(errorText);
+    detail = errJson.message || errJson.detail || errJson.error || '';
+  } catch { detail = errorText.substring(0, 300); }
+
+  // Si ya estaba cancelado no es un error crítico
+  if (response.status === 400 && detail.toLowerCase().includes('cancel')) {
+    return { success: true, alreadyCancelled: true };
+  }
+
+  throw new Error(`HTTP ${response.status}: ${detail}`);
+}
