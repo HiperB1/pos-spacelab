@@ -93,6 +93,7 @@ export interface Factura {
   cliente_nit: string;
   tipo_identificacion?: string;
   cliente_direccion: string;
+  barrio_medellin?: string;
   fecha: string;
   subtotal: number;
   iva: number;             // Siempre 0 — MySpace no aplica IVA. El campo existe para compatibilidad futura.
