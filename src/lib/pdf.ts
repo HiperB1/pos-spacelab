@@ -46,18 +46,31 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
     console.error('Error cargando logo:', e);
   }
 
-  // 100mm × auto (height ajustada al contenido para no generar espacio en blanco)
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
   const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
+
+  // Escala dinámica: reduce fuente/padding de la tabla para que todos los ítems quepan en una página
+  const n = factura.items.length;
+  const headerMargin  = n > 3 ? 3 : 7;
+  const sectionMargin = n > 3 ? 4 : 10;
+  const BUDGET = n > 3 ? 92 : 80; // puntos disponibles para la tabla
+  let tfs = 11, tp = 5;           // table font size, table padding
+  while ((tfs * 1.1 + tp * 2) * (n + 1) + 2 > BUDGET) {
+    if (tp > 1) tp--;
+    else { tfs = Math.max(6, tfs - 1); tp = Math.max(1, Math.floor(tfs * 0.3)); }
+    if (tfs <= 6 && tp <= 1) break;
+  }
 
   const docDefinition: any = {
-    pageSize: { width: PAGE_W, height: 'auto' },
-    pageMargins: [10, 10, 10, 10],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [8, 8, 8, 8],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 70,
+            fit: [99, 40],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -68,7 +81,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 6]
+        margin: [0, 0, 0, headerMargin]
       },
       {
         columns: [
@@ -94,7 +107,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 8]
+        margin: [0, 0, 0, sectionMargin]
       },
       {
         table: {
@@ -121,10 +134,10 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
           paddingLeft: () => 4,
           paddingRight: () => 4,
-          paddingTop: () => 3,
-          paddingBottom: () => 3,
+          paddingTop: () => tp,
+          paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 8]
+        margin: [0, 0, 0, 4]
       },
       {
         columns: [
@@ -176,7 +189,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
       ...(factura.estado === 'anulada' ? [
         {
           text: '— FACTURA ANULADA —',
-          style: { color: 'red', bold: true, alignment: 'center', fontSize: 9 },
+          style: { color: '#000', bold: true, alignment: 'center', fontSize: 13 },
           margin: [0, 8, 0, 2]
         },
         { text: `Motivo: ${factura.motivo_anulacion}`, style: 'empresaInfo', alignment: 'center' },
@@ -184,25 +197,25 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
       ] : []),
     ],
     styles: {
-      header: { fontSize: 10, bold: true, color: '#333' },
-      title: { fontSize: 9, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
-      subheader: { fontSize: 7, color: '#999' },
-      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
-      empresaNome: { fontSize: 8, bold: true },
-      empresaInfo: { fontSize: 7, color: '#666' },
-      clienteNome: { fontSize: 8, bold: true },
-      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
-      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
-      totalLabel: { fontSize: 7, color: '#666', alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValue: { fontSize: 7, alignment: 'right' },
-      totalLabelBold: { fontSize: 8, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValueBold: { fontSize: 8, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 7, color: '#999' }
+      header: { fontSize: 14, bold: true, color: '#000' },
+      title: { fontSize: 13, bold: true, color: '#000' },
+      invoiceNumber: { fontSize: 12, bold: true, color: '#000' },
+      subheader: { fontSize: 11, color: '#000' },
+      sectionTitle: { fontSize: 11, bold: true, color: '#000', margin: [0, 0, 0, 2] },
+      empresaNome: { fontSize: 12, bold: true },
+      empresaInfo: { fontSize: 11, color: '#000' },
+      clienteNome: { fontSize: 12, bold: true },
+      tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: 11, color: '#000', alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValue: { fontSize: 11, alignment: 'right' },
+      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: 11, color: '#000' }
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
-  
+
   try {
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
@@ -227,8 +240,9 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
   const empresaTelefono = config.empresa_telefono || '';
   const empresaDireccion = config.empresa_direccion || '';
 
-  // 100mm × auto (height ajustada al contenido)
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
   const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
 
   let logoBase64 = '';
   try {
@@ -237,40 +251,53 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
     console.error('Error cargando logo:', e);
   }
 
+  // Ancho del contenido: PAGE_W - márgenes laterales (12 × 2)
+  const CONTENT_W = PAGE_W - 24;
+
   const docDefinition: any = {
-    pageSize: { width: PAGE_W, height: 'auto' },
-    pageMargins: [10, 10, 10, 10],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [12, 12, 12, 12],
+    // Marco negro en el límite del PDF
+    background: (_page: number, pageSize: any) => ({
+      canvas: [{
+        type: 'rect',
+        x: 4, y: 4,
+        w: pageSize.width - 8,
+        h: pageSize.height - 8,
+        lineWidth: 2.5,
+        lineColor: '#000000',
+        r: 2
+      }]
+    }),
     content: [
       // Cabecera: logo + título
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 70,
+            fit: [90, 38],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
-              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right' },
-              { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right' },
-              { text: factura.fecha, style: 'subheader', alignment: 'right' }
+              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right', fontSize: 12 },
+              { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right', fontSize: 11 },
+              { text: factura.fecha, style: 'subheader', alignment: 'right', fontSize: 10 }
             ],
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 6]
+        margin: [0, 0, 0, 1]
+      },
+      // Línea negra decorativa bajo la cabecera
+      {
+        canvas: [
+          { type: 'rect', x: 0, y: 0, w: CONTENT_W, h: 2, r: 0, color: '#000000' }
+        ],
+        margin: [0, 0, 0, 5]
       },
       // Secciones remitente / destinatario
       {
         columns: [
-          {
-            stack: [
-              { text: 'REMITENTE', style: 'sectionTitle' },
-              { text: empresaNome, style: 'empresaNome' },
-              { text: empresaDireccion, style: 'empresaInfo' },
-              { text: `Tel: ${empresaTelefono}`, style: 'empresaInfo' },
-            ],
-            width: '*'
-          },
           {
             stack: [
               { text: 'DESTINATARIO', style: 'sectionTitle' },
@@ -279,51 +306,73 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
               ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
             ],
             width: '*'
+          },
+          {
+            stack: [
+              { text: 'REMITENTE', style: 'sectionTitle', fontSize: 10 },
+              { text: empresaNome, style: 'empresaNome', fontSize: 11 },
+              { text: empresaDireccion, style: 'empresaInfo', fontSize: 10 },
+              { text: `Tel: ${empresaTelefono}`, style: 'empresaInfo', fontSize: 10 },
+            ],
+            width: '*'
           }
         ],
-        margin: [0, 0, 0, 8]
+        margin: [0, 0, 0, 4]
       },
-      // Tabla de contenido del paquete
+      // Separador con puntos simulando estrellas (todo en negro)
+      {
+        canvas: [
+          { type: 'line', x1: 0, y1: 4, x2: CONTENT_W, y2: 4, lineWidth: 0.5, lineColor: '#000000' },
+          { type: 'ellipse', x: 20,  y: 4, r1: 2.0, r2: 2.0, color: '#000000' },
+          { type: 'ellipse', x: 58,  y: 4, r1: 1.1, r2: 1.1, color: '#000000' },
+          { type: 'ellipse', x: 96,  y: 4, r1: 1.5, r2: 1.5, color: '#000000' },
+          { type: 'ellipse', x: 129, y: 4, r1: 2.4, r2: 2.4, color: '#000000' },
+          { type: 'ellipse', x: 163, y: 4, r1: 1.1, r2: 1.1, color: '#000000' },
+          { type: 'ellipse', x: 200, y: 4, r1: 1.5, r2: 1.5, color: '#000000' },
+          { type: 'ellipse', x: 239, y: 4, r1: 2.0, r2: 2.0, color: '#000000' },
+        ],
+        margin: [0, 0, 0, 4]
+      },
+      // Bloque de agradecimiento con marco negro (sin fondo)
       {
         table: {
-          headerRows: 1,
-          widths: ['*', 40],
-          body: [
-            [
-              { text: 'DESCRIPCIÓN', style: 'tableHeader' },
-              { text: 'CANT', style: 'tableHeader', alignment: 'center' },
+          widths: ['*'],
+          body: [[{
+            stack: [
+              { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
+              { text: 'POR RECIBIR UN FRAGMENTO DE NUESTRO UNIVERSO', style: 'thanksSubtitle', characterSpacing: 1 },
+              {
+                text: 'Cada creación fue hecha con detalle, imaginación e ideas de otro mundo. Esperamos que este nuevo artefacto encuentre su lugar en tu espacio y lo haga aún más tuyo.',
+                style: 'thanksBody',
+                margin: [0, 5, 0, 0]
+              },
             ],
-            ...factura.items.map((item) => [
-              { text: item.descripcion, style: 'tableCell' },
-              { text: item.quantidade.toString(), style: 'tableCell', alignment: 'center' },
-            ])
-          ]
+            margin: [8, 7, 8, 7]
+          }]]
         },
         layout: {
-          hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
-          vLineWidth: () => 0,
-          hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
-          paddingLeft: () => 4,
-          paddingRight: () => 4,
-          paddingTop: () => 3,
-          paddingBottom: () => 3,
+          hLineWidth: () => 1.5,
+          vLineWidth: () => 1.5,
+          hLineColor: () => '#000000',
+          vLineColor: () => '#000000',
         },
         margin: [0, 0, 0, 0]
       },
     ],
     styles: {
-      header: { fontSize: 10, bold: true, color: '#333' },
-      title: { fontSize: 9, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
-      subheader: { fontSize: 7, color: '#999' },
-      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
-      empresaNome: { fontSize: 8, bold: true },
-      empresaInfo: { fontSize: 7, color: '#666' },
-      clienteNome: { fontSize: 8, bold: true },
-      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
-      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
+      header:       { fontSize: 14, bold: true, color: '#000' },
+      title:        { fontSize: 12, bold: true, color: '#000' },
+      invoiceNumber:{ fontSize: 11, bold: true, color: '#000' },
+      subheader:    { fontSize: 10, color: '#000' },
+      sectionTitle: { fontSize: 10, bold: true, color: '#000', margin: [0, 0, 0, 2] },
+      empresaNome:  { fontSize: 11, bold: true, color: '#000' },
+      empresaInfo:  { fontSize: 10, color: '#000' },
+      clienteNome:  { fontSize: 11, bold: true, color: '#000' },
+      thanksTitle:   { fontSize: 16, bold: true, color: '#000' },
+      thanksSubtitle:{ fontSize: 8.5, bold: true, color: '#000', margin: [0, 2, 0, 0] },
+      thanksBody:    { fontSize: 9, color: '#000', lineHeight: 1.35 },
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
 
   try {
@@ -361,18 +410,31 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
 
   const items = cotizacion.items || [];
 
-  // 100mm × auto (height ajustada al contenido para no generar espacio en blanco)
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
   const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
+
+  // Escala dinámica: reduce fuente/padding de la tabla para que todos los ítems quepan en una página
+  const n = items.length;
+  const headerMargin  = n > 3 ? 3 : 7;
+  const sectionMargin = n > 3 ? 2 : 4;
+  const BUDGET = n > 3 ? 92 : 80;
+  let tfs = 11, tp = 5;
+  while ((tfs * 1.1 + tp * 2) * (n + 1) + 2 > BUDGET) {
+    if (tp > 1) tp--;
+    else { tfs = Math.max(6, tfs - 1); tp = Math.max(1, Math.floor(tfs * 0.3)); }
+    if (tfs <= 6 && tp <= 1) break;
+  }
 
   const docDefinition: any = {
-    pageSize: { width: PAGE_W, height: 'auto' },
-    pageMargins: [10, 10, 10, 10],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [8, 8, 8, 8],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 70,
+            fit: [99, 40],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -384,7 +446,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 6]
+        margin: [0, 0, 0, headerMargin]
       },
       {
         columns: [
@@ -411,12 +473,12 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 8]
+        margin: [0, 0, 0, sectionMargin]
       },
       {
         text: 'DETALLE DE LA COTIZACIÓN',
         style: 'sectionTitle',
-        margin: [0, 0, 0, 4]
+        margin: [0, 0, 0, 2]
       },
       {
         table: {
@@ -443,10 +505,10 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
           paddingLeft: () => 4,
           paddingRight: () => 4,
-          paddingTop: () => 3,
-          paddingBottom: () => 3,
+          paddingTop: () => tp,
+          paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 8]
+        margin: [0, 0, 0, 4]
       },
       {
         columns: [
@@ -500,36 +562,36 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
         {
           text: `— ${cotizacion.estado.toUpperCase()} —`,
           style: {
-            fontSize: 9,
+            fontSize: 13,
             bold: true,
             alignment: 'center',
-            color: cotizacion.estado === 'aprobada' ? '#22c55e' : cotizacion.estado === 'rechazada' ? '#ef4444' : '#eab308'
+            color: '#000'
           },
           margin: [0, 8, 0, 0]
         }
       ] : []),
     ],
     styles: {
-      header: { fontSize: 10, bold: true, color: '#333' },
-      title: { fontSize: 9, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 8, bold: true, color: '#666' },
-      subheader: { fontSize: 7, color: '#999' },
-      subheaderHighlight: { fontSize: 7, bold: true, color: '#f97316' },
-      sectionTitle: { fontSize: 7, bold: true, color: '#f97316', margin: [0, 0, 0, 2] },
-      empresaNome: { fontSize: 8, bold: true },
-      empresaInfo: { fontSize: 7, color: '#666' },
-      clienteNome: { fontSize: 8, bold: true },
-      tableHeader: { fontSize: 7, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
-      tableCell: { fontSize: 7, margin: [0, 1, 0, 1] },
-      totalLabel: { fontSize: 7, color: '#666', alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValue: { fontSize: 7, alignment: 'right' },
-      totalValueDiscount: { fontSize: 7, alignment: 'right', color: '#22c55e' },
-      totalLabelBold: { fontSize: 8, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValueBold: { fontSize: 8, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 7, color: '#999' },
-      validityNote: { fontSize: 7, color: '#666', italics: true }
+      header: { fontSize: 14, bold: true, color: '#000' },
+      title: { fontSize: 13, bold: true, color: '#000' },
+      invoiceNumber: { fontSize: 12, bold: true, color: '#000' },
+      subheader: { fontSize: 11, color: '#000' },
+      subheaderHighlight: { fontSize: 11, bold: true, color: '#000' },
+      sectionTitle: { fontSize: 11, bold: true, color: '#000', margin: [0, 0, 0, 2] },
+      empresaNome: { fontSize: 12, bold: true },
+      empresaInfo: { fontSize: 11, color: '#000' },
+      clienteNome: { fontSize: 12, bold: true },
+      tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: 11, color: '#000', alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValue: { fontSize: 11, alignment: 'right' },
+      totalValueDiscount: { fontSize: 11, alignment: 'right', color: '#000' },
+      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
+      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: 11, color: '#000' },
+      validityNote: { fontSize: 11, color: '#000', italics: true }
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
   
   try {
