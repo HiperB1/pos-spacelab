@@ -8,6 +8,23 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.1",
+    fecha: "2026-05-22",
+    mejoras: [
+      "PDFs de factura, cotización y guía de envío adaptados al tamaño exacto del papel POS: 100 × 95 mm",
+      "Escala global proporcional en facturas y cotizaciones: todo el contenido se comprime automáticamente para caber en una sola página, sin importar la cantidad de ítems",
+      "Tipografía más grande y legible en todos los PDFs (fuentes en negrita, color negro puro)",
+      "Logo de la empresa se escala proporcionalmente con 'fit' en lugar de ancho fijo, evitando deformaciones",
+      "Guía de envío local rediseñada con estética espacial y marco negro en el borde del PDF",
+      "Columnas de precio y cantidad en la tabla de ítems ajustadas para aprovechar mejor el espacio",
+    ],
+    correcciones: [
+      "PDFs ya no generan página en blanco al final cuando el contenido es pequeño",
+      "Algoritmo de escala reemplazado: ahora usa escala global proporcional en lugar de reducir solo la tipografía de la tabla, logrando resultados visualmente consistentes",
+      "Márgenes y espaciados internos del PDF ahora se escalan junto con las fuentes, eliminando cortes de contenido",
+    ],
+  },
+  {
     version: "1.0.0",
     fecha: "2026-05-21",
     novedades: [

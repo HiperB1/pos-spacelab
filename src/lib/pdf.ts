@@ -46,15 +46,37 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
     console.error('Error cargando logo:', e);
   }
 
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
+  const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
+
+  // Escala global: comprime TODO el contenido proporcionalmente para garantizar exactamente 1 página
+  const n = factura.items.length;
+  const CONTENT_H = PAGE_H - 16; // altura usable con márgenes 8+8
+
+  // Estimaciones a escala=1 considerando lineHeight real de Roboto (~1.17) y
+  // wrapping promedio de descripciones largas en columna estrecha:
+  //   H_HEADER=42  H_INFO=94  H_TABLE_HDR=20  H_ROW=26(promedio 1-2 líneas)  H_TOTALS=29  misc=8
+  const estimatedH = 42 + 94 + 20 + n * 26 + 29 + 8;
+  const scale = Math.min(1.0, (CONTENT_H * 0.90) / estimatedH);
+
+  const f = (base: number): number => Math.max(6, base * scale);
+  const m = (base: number): number => Math.max(0, base * scale);
+
+  const tfs = f(10);
+  const tp  = Math.max(1, m(4));
+  const headerMargin  = m(5);
+  const sectionMargin = m(7);
+
   const docDefinition: any = {
-    pageSize: 'LETTER',
-    pageMargins: [40, 40, 40, 40],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [8, 8, 8, 8],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 150,
+            fit: [m(99), m(38)],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -65,7 +87,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, headerMargin]
       },
       {
         columns: [
@@ -91,17 +113,17 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 30]
+        margin: [0, 0, 0, sectionMargin]
       },
       {
         table: {
           headerRows: 1,
-          widths: ['*', 50, 80, 80],
+          widths: ['*', 16, 44, 44],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
               { text: 'CANT', style: 'tableHeader', alignment: 'center' },
-              { text: 'PRECIO UNIT.', style: 'tableHeader', alignment: 'right' },
+              { text: 'P. UNIT.', style: 'tableHeader', alignment: 'right' },
               { text: 'TOTAL', style: 'tableHeader', alignment: 'right' }
             ],
             ...factura.items.map((item) => [
@@ -116,110 +138,90 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
           hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
-          paddingLeft: () => 8,
-          paddingRight: () => 8,
-          paddingTop: () => 6,
-          paddingBottom: () => 6,
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => tp,
+          paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, m(4)]
       },
       {
         columns: [
-          { 
+          {
             stack: [
               ...(factura.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, m(4), 0, m(2)] },
                 { text: factura.notas, style: 'empresaInfo' }
               ] : [])
             ],
-            width: '*' 
+            width: '*'
           },
           {
-            width: 200,
+            width: 130,
             stack: [
               {
                 columns: [
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(factura.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, m(3)]
               },
-              {
+              ...(factura.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
-                  { text: formatCurrency(factura.descuento || 0), style: 'totalValue' }
+                  { text: formatCurrency(factura.descuento), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5],
-                ...(factura.descuento > 0 ? {} : { opacity: 0 })
-              },
+                margin: [0, 0, 0, m(3)]
+              }] : []),
               ...(factura.costo_envio && factura.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(factura.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, m(3)]
               }] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [
                   { text: 'TOTAL A PAGAR', style: 'totalLabelBold' },
                   { text: formatCurrency(factura.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 8, 0, 0]
+                margin: [0, m(4), 0, 0]
               }
             ]
           }
         ]
       },
       ...(factura.estado === 'anulada' ? [
-        { 
-          absolutePosition: { x: 0, y: 300 },
-          text: 'ANULADA', 
-          style: { 
-            fontSize: 80, 
-            bold: true, 
-            color: '#ff0000', 
-            opacity: 0.2, 
-            alignment: 'center',
-            angle: 45
-          } 
-        },
-        { 
-          text: 'ESTA FACTURA HA SIDO ANULADA', 
-          style: { color: 'red', bold: true, alignment: 'center' }, 
-          margin: [0, 40, 0, 0] 
+        {
+          text: '— FACTURA ANULADA —',
+          style: { color: '#000', bold: true, alignment: 'center', fontSize: f(13) },
+          margin: [0, m(8), 0, m(2)]
         },
         { text: `Motivo: ${factura.motivo_anulacion}`, style: 'empresaInfo', alignment: 'center' },
         { text: `Fecha anulación: ${factura.fecha_anulacion}`, style: 'empresaInfo', alignment: 'center' }
       ] : []),
-      {
-        stack: [
-          { text: '_______________________________________', alignment: 'center', margin: [0, 60, 0, 5] },
-          { text: 'RECIBÍ CONFORME', style: 'label', alignment: 'center' }
-        ],
-        margin: [0, 20, 0, 0]
-      }
     ],
     styles: {
-      header: { fontSize: 24, bold: true, color: '#333' },
-      title: { fontSize: 18, bold: true, color: '#f97316' }, // Orange color matching the UI
-      invoiceNumber: { fontSize: 14, bold: true, color: '#666' },
-      subheader: { fontSize: 10, color: '#999' },
-      sectionTitle: { fontSize: 9, bold: true, color: '#f97316', margin: [0, 0, 0, 5] },
-      empresaNome: { fontSize: 11, bold: true },
-      empresaInfo: { fontSize: 9, color: '#666' },
-      clienteNome: { fontSize: 11, bold: true },
-      tableHeader: { fontSize: 9, bold: true, color: '#fff', fillColor: '#333', margin: [0, 2, 0, 2] },
-      tableCell: { fontSize: 9, margin: [0, 2, 0, 2] },
-      totalLabel: { fontSize: 10, color: '#666', alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValue: { fontSize: 10, alignment: 'right' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 8, color: '#999' }
+      header: { fontSize: f(14), bold: true, color: '#000' },
+      title: { fontSize: f(13), bold: true, color: '#000' },
+      invoiceNumber: { fontSize: f(12), bold: true, color: '#000' },
+      subheader: { fontSize: f(11), color: '#000' },
+      sectionTitle: { fontSize: f(10), bold: true, color: '#000', margin: [0, 0, 0, m(2)] },
+      empresaNome: { fontSize: f(11), bold: true },
+      empresaInfo: { fontSize: f(10), color: '#000' },
+      clienteNome: { fontSize: f(11), bold: true },
+      tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: f(10), color: '#000', alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValue: { fontSize: f(10), alignment: 'right' },
+      totalLabelBold: { fontSize: f(11), bold: true, alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValueBold: { fontSize: f(11), bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: f(10), color: '#000' }
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
-  
+
   try {
     // @ts-ignore - pdfmake types are broken
     const pdfDocGenerator = pdfMake.createPdf(docDefinition);
@@ -241,51 +243,141 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
 
   const config = db.getConfiguracion();
   const empresaNome = config.empresa_nome || 'My Space';
+  const empresaTelefono = config.empresa_telefono || '';
+  const empresaDireccion = config.empresa_direccion || '';
 
-  // 95mm × 95mm en puntos (1mm = 2.8346pt)
-  const SIZE_PT = 269.3;
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
+  const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
 
-  const contenidoItems = factura.items
-    .map((item) => `${item.descripcion} × ${item.quantidade}`)
-    .join('\n');
+  let logoBase64 = '';
+  try {
+    logoBase64 = await getBase64ImageFromURL('/myspace-logo.png');
+  } catch (e) {
+    console.error('Error cargando logo:', e);
+  }
+
+  // Ancho del contenido: PAGE_W - márgenes laterales (12 × 2)
+  const CONTENT_W = PAGE_W - 24;
 
   const docDefinition: any = {
-    pageSize: { width: SIZE_PT, height: SIZE_PT },
-    pageMargins: [8, 8, 8, 8],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [12, 12, 12, 12],
+    // Marco negro en el límite del PDF
+    background: (_page: number, pageSize: any) => ({
+      canvas: [{
+        type: 'rect',
+        x: 4, y: 4,
+        w: pageSize.width - 8,
+        h: pageSize.height - 8,
+        lineWidth: 2.5,
+        lineColor: '#000000',
+        r: 2
+      }]
+    }),
     content: [
-      // Cabecera: empresa + número de referencia
+      // Cabecera: logo + título
       {
         columns: [
-          { text: empresaNome, style: 'empresa', width: '*' },
-          { text: factura.numero, style: 'refNum', alignment: 'right', width: 'auto' }
+          logoBase64 ? {
+            image: logoBase64,
+            fit: [90, 38],
+          } : { text: empresaNome, style: 'header', width: '*' },
+          {
+            stack: [
+              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right', fontSize: 12 },
+              { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right', fontSize: 11 },
+              { text: factura.fecha, style: 'subheader', alignment: 'right', fontSize: 10 }
+            ],
+            width: '*'
+          }
+        ],
+        margin: [0, 0, 0, 1]
+      },
+      // Línea negra decorativa bajo la cabecera
+      {
+        canvas: [
+          { type: 'rect', x: 0, y: 0, w: CONTENT_W, h: 2, r: 0, color: '#000000' }
+        ],
+        margin: [0, 0, 0, 5]
+      },
+      // Secciones remitente / destinatario
+      {
+        columns: [
+          {
+            stack: [
+              { text: 'DESTINATARIO', style: 'sectionTitle' },
+              { text: factura.cliente_nome.toUpperCase(), style: 'clienteNome' },
+              ...(factura.cliente_celular ? [{ text: `Tel: ${factura.cliente_celular}`, style: 'empresaInfo' }] : []),
+              ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
+              ...(factura.barrio_medellin ? [{ text: `Barrio: ${factura.barrio_medellin}`, style: 'empresaInfo' }] : []),
+            ],
+            width: '*'
+          },
+          {
+            stack: [
+              { text: 'REMITENTE', style: 'sectionTitle', fontSize: 10 },
+              { text: empresaNome, style: 'empresaNome', fontSize: 11 },
+              { text: empresaDireccion, style: 'empresaInfo', fontSize: 10 },
+              { text: `Tel: ${empresaTelefono}`, style: 'empresaInfo', fontSize: 10 },
+            ],
+            width: '*'
+          }
         ],
         margin: [0, 0, 0, 4]
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#999' }], margin: [0, 0, 0, 5] },
-      // Destinatario
-      { text: 'PARA:', style: 'label', margin: [0, 0, 0, 1] },
-      { text: factura.cliente_nome.toUpperCase(), style: 'destinatario', margin: [0, 0, 0, 2] },
-      { text: factura.cliente_direccion || '—', style: 'direccion', margin: [0, 0, 0, 1] },
-      { text: `Tel: ${factura.cliente_celular || '—'}`, style: 'telefono', margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 4] },
-      // Contenido del paquete
-      { text: 'CONTENIDO:', style: 'label', margin: [0, 0, 0, 1] },
-      { text: contenidoItems || '—', style: 'contenido', margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: SIZE_PT - 16, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }], margin: [0, 0, 0, 3] },
-      // Remitente
-      { text: `DE: ${empresaNome}  ·  ${config.empresa_telefono || ''}`, style: 'remitente' },
+      // Separador con puntos simulando estrellas (todo en negro)
+      {
+        canvas: [
+          { type: 'line', x1: 0, y1: 4, x2: CONTENT_W, y2: 4, lineWidth: 0.5, lineColor: '#000000' },
+          { type: 'ellipse', x: 20,  y: 4, r1: 2.0, r2: 2.0, color: '#000000' },
+          { type: 'ellipse', x: 58,  y: 4, r1: 1.1, r2: 1.1, color: '#000000' },
+          { type: 'ellipse', x: 96,  y: 4, r1: 1.5, r2: 1.5, color: '#000000' },
+          { type: 'ellipse', x: 129, y: 4, r1: 2.4, r2: 2.4, color: '#000000' },
+          { type: 'ellipse', x: 163, y: 4, r1: 1.1, r2: 1.1, color: '#000000' },
+          { type: 'ellipse', x: 200, y: 4, r1: 1.5, r2: 1.5, color: '#000000' },
+          { type: 'ellipse', x: 239, y: 4, r1: 2.0, r2: 2.0, color: '#000000' },
+        ],
+        margin: [0, 0, 0, 4]
+      },
+      // Bloque de agradecimiento con marco negro (sin fondo)
+      {
+        table: {
+          widths: ['*'],
+          body: [[{
+            stack: [
+              { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
+              { text: 'POR RECIBIR UN FRAGMENTO DE NUESTRO UNIVERSO', style: 'thanksSubtitle', characterSpacing: 1 },
+              {
+                text: 'Cada creación fue hecha con detalle, imaginación e ideas de otro mundo. Esperamos que este nuevo artefacto encuentre su lugar en tu espacio y lo haga aún más tuyo.',
+                style: 'thanksBody',
+                margin: [0, 5, 0, 0]
+              },
+            ],
+            margin: [8, 7, 8, 7]
+          }]]
+        },
+        layout: {
+          hLineWidth: () => 0,
+          vLineWidth: () => 0,
+        },
+        margin: [0, 0, 0, 0]
+      },
     ],
     styles: {
-      empresa: { fontSize: 7, bold: true, color: '#f97316' },
-      refNum: { fontSize: 7, bold: true, color: '#666' },
-      label: { fontSize: 6.5, bold: true, color: '#999' },
-      destinatario: { fontSize: 11, bold: true },
-      direccion: { fontSize: 7.5 },
-      telefono: { fontSize: 7.5 },
-      contenido: { fontSize: 7, color: '#333' },
-      remitente: { fontSize: 6.5, color: '#666' },
+      header:       { fontSize: 14, bold: true, color: '#000' },
+      title:        { fontSize: 12, bold: true, color: '#000' },
+      invoiceNumber:{ fontSize: 11, bold: true, color: '#000' },
+      subheader:    { fontSize: 10, color: '#000' },
+      sectionTitle: { fontSize: 10, bold: true, color: '#000', margin: [0, 0, 0, 2] },
+      empresaNome:  { fontSize: 11, bold: true, color: '#000' },
+      empresaInfo:  { fontSize: 10, color: '#000' },
+      clienteNome:  { fontSize: 11, bold: true, color: '#000' },
+      thanksTitle:   { fontSize: 16, bold: true, color: '#000' },
+      thanksSubtitle:{ fontSize: 8.5, bold: true, color: '#000', margin: [0, 2, 0, 0] },
+      thanksBody:    { fontSize: 9, color: '#000', lineHeight: 1.35 },
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
 
   try {
@@ -322,16 +414,39 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
   }
 
   const items = cotizacion.items || [];
-  
+
+  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
+  const PAGE_W = 283.46; // 100mm en puntos
+  const PAGE_H = 268.98; // 95mm en puntos
+
+  // Escala global: comprime TODO el contenido proporcionalmente para garantizar exactamente 1 página
+  const n = items.length;
+  const CONTENT_H = PAGE_H - 16; // altura usable con márgenes 8+8
+
+  // Estimaciones a escala=1 considerando lineHeight real de Roboto (~1.17) y
+  // wrapping promedio en columna de descripción. La cotización tiene línea extra
+  // (fecha vencimiento + "DETALLE DE LA COTIZACIÓN"):
+  //   H_HEADER=50  H_INFO=94  H_TABLE_HDR+DETALLE=28  H_ROW=26  H_TOTALS=29  misc=8
+  const estimatedH = 50 + 94 + 28 + n * 26 + 29 + 8;
+  const scale = Math.min(1.0, (CONTENT_H * 0.90) / estimatedH);
+
+  const f = (base: number): number => Math.max(6, base * scale);
+  const m = (base: number): number => Math.max(0, base * scale);
+
+  const tfs = f(10);
+  const tp  = Math.max(1, m(4));
+  const headerMargin  = m(5);
+  const sectionMargin = m(6);
+
   const docDefinition: any = {
-    pageSize: 'LETTER',
-    pageMargins: [40, 40, 40, 40],
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [8, 8, 8, 8],
     content: [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            width: 150,
+            fit: [m(99), m(38)],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -343,7 +458,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, headerMargin]
       },
       {
         columns: [
@@ -370,22 +485,22 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
             width: '*'
           }
         ],
-        margin: [0, 0, 0, 30]
+        margin: [0, 0, 0, sectionMargin]
       },
       {
         text: 'DETALLE DE LA COTIZACIÓN',
         style: 'sectionTitle',
-        margin: [0, 0, 0, 10]
+        margin: [0, 0, 0, m(2)]
       },
       {
         table: {
           headerRows: 1,
-          widths: ['*', 50, 80, 80],
+          widths: ['*', 16, 44, 44],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
               { text: 'CANT', style: 'tableHeader', alignment: 'center' },
-              { text: 'PRECIO UNIT.', style: 'tableHeader', alignment: 'right' },
+              { text: 'P. UNIT.', style: 'tableHeader', alignment: 'right' },
               { text: 'TOTAL', style: 'tableHeader', alignment: 'right' }
             ],
             ...items.map((item: any) => [
@@ -400,105 +515,95 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
           hLineWidth: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
           vLineWidth: () => 0,
           hLineColor: (i: number, node: any) => (i === 0 || i === 1 || i === node.table.body.length) ? '#333' : '#eee',
-          paddingLeft: () => 8,
-          paddingRight: () => 8,
-          paddingTop: () => 6,
-          paddingBottom: () => 6,
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => tp,
+          paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, m(4)]
       },
       {
         columns: [
-          { 
+          {
             stack: [
               ...(cotizacion.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 10, 0, 5] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, m(4), 0, m(2)] },
                 { text: cotizacion.notas, style: 'empresaInfo' }
               ] : []),
-              { text: 'Validez: Esta cotización tiene vigencia de ' + cotizacion.validez_dias + ' días.', style: 'validityNote', margin: [0, 20, 0, 0] }
+              { text: `Vigencia: ${cotizacion.validez_dias} días.`, style: 'validityNote', margin: [0, m(4), 0, 0] }
             ],
-            width: '*' 
+            width: '*'
           },
           {
-            width: 200,
+            width: 130,
             stack: [
               {
                 columns: [
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, m(3)]
               },
               ...(cotizacion.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
                   { text: '-' + formatCurrency(cotizacion.descuento), style: 'totalValueDiscount' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, m(3)]
               }] : []),
               ...(cotizacion.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 5]
+                margin: [0, 0, 0, m(3)]
               }] : []),
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
+              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [
                   { text: 'TOTAL', style: 'totalLabelBold' },
                   { text: formatCurrency(cotizacion.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 8, 0, 0]
+                margin: [0, m(4), 0, 0]
               }
             ]
           }
         ]
       },
       ...(cotizacion.estado !== 'abierta' ? [
-        { 
-          absolutePosition: { x: 0, y: 300 },
-          text: cotizacion.estado.toUpperCase(), 
-          style: { 
-            fontSize: 80, 
-            bold: true, 
-            color: cotizacion.estado === 'aprobada' ? '#22c55e' : cotizacion.estado === 'rechazada' ? '#ef4444' : '#eab308', 
-            opacity: 0.2, 
+        {
+          text: `— ${cotizacion.estado.toUpperCase()} —`,
+          style: {
+            fontSize: f(13),
+            bold: true,
             alignment: 'center',
-            angle: 45
-          } 
+            color: '#000'
+          },
+          margin: [0, m(8), 0, 0]
         }
       ] : []),
-      {
-        stack: [
-          { text: '_______________________________________', alignment: 'center', margin: [0, 60, 0, 5] },
-          { text: 'FIRMA CLIENTE', style: 'label', alignment: 'center' },
-          { text: 'Aceptación de cotización', style: 'label', alignment: 'center', margin: [0, 5, 0, 0] }
-        ],
-        margin: [0, 20, 0, 0]
-      }
     ],
     styles: {
-      header: { fontSize: 24, bold: true, color: '#333' },
-      title: { fontSize: 18, bold: true, color: '#f97316' },
-      invoiceNumber: { fontSize: 14, bold: true, color: '#666' },
-      subheader: { fontSize: 10, color: '#999' },
-      subheaderHighlight: { fontSize: 10, bold: true, color: '#f97316' },
-      sectionTitle: { fontSize: 9, bold: true, color: '#f97316', margin: [0, 0, 0, 5] },
-      empresaNome: { fontSize: 11, bold: true },
-      empresaInfo: { fontSize: 9, color: '#666' },
-      clienteNome: { fontSize: 11, bold: true },
-      tableHeader: { fontSize: 9, bold: true, color: '#fff', fillColor: '#333', margin: [0, 2, 0, 2] },
-      tableCell: { fontSize: 9, margin: [0, 2, 0, 2] },
-      totalLabel: { fontSize: 10, color: '#666', alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValue: { fontSize: 10, alignment: 'right' },
-      totalValueDiscount: { fontSize: 10, alignment: 'right', color: '#22c55e' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 10, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#f97316' },
-      label: { fontSize: 8, color: '#999' },
-      validityNote: { fontSize: 9, color: '#666', italics: true }
+      header: { fontSize: f(14), bold: true, color: '#000' },
+      title: { fontSize: f(13), bold: true, color: '#000' },
+      invoiceNumber: { fontSize: f(12), bold: true, color: '#000' },
+      subheader: { fontSize: f(11), color: '#000' },
+      subheaderHighlight: { fontSize: f(11), bold: true, color: '#000' },
+      sectionTitle: { fontSize: f(10), bold: true, color: '#000', margin: [0, 0, 0, m(2)] },
+      empresaNome: { fontSize: f(11), bold: true },
+      empresaInfo: { fontSize: f(10), color: '#000' },
+      clienteNome: { fontSize: f(11), bold: true },
+      tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
+      tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
+      totalLabel: { fontSize: f(10), color: '#000', alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValue: { fontSize: f(10), alignment: 'right' },
+      totalValueDiscount: { fontSize: f(10), alignment: 'right', color: '#000' },
+      totalLabelBold: { fontSize: f(11), bold: true, alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValueBold: { fontSize: f(11), bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: f(10), color: '#000' },
+      validityNote: { fontSize: f(10), color: '#000', italics: true }
     },
-    defaultStyle: { font: 'Roboto' }
+    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
   
   try {

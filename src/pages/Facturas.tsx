@@ -58,6 +58,46 @@ interface Factura {
   payment_method_code?: string;
 }
 
+const BARRIOS_MEDELLIN = [
+  'Aguacatala', 'Alejandría', 'Alfonso López', 'Altavista', 'Andalucía',
+  'Aranjuez', 'Arrabal', 'Ayurá', 'Barrio Colón', 'Barrio Cristóbal',
+  'Belén', 'Berlín', 'Bello Oriente', 'Bomboná N°1', 'Bomboná N°2',
+  'Boston', 'Boyacá', 'Brasilia', 'Buenos Aires', 'Calasanz',
+  'Calasanz Parte Alta', 'Campo Amor', 'Campo Valdés N°1', 'Campo Valdés N°2',
+  'Carpinelo', 'Castilla', 'Centro', 'Colombia', 'Conquistadores',
+  'Córdoba', 'Cristo Rey', 'Cuarta Brigada', 'Diego Echavarría',
+  'El Compromiso', 'El Corazón', 'El Diamante N°2', 'El Pinar', 'El Poblado',
+  'El Pomar', 'El Raizal', 'El Salvador', 'El Triunfo', 'El Velódromo',
+  'El Volador', 'Estadio', 'Exposiciones', 'Ferrini', 'Florencia',
+  'Florida Nueva', 'Francisco Antonio Zea', 'Francia', 'Frontera', 'Gerona',
+  'Girardot', 'Granada', 'Granizal', 'Guayabal', 'Guayaquil',
+  'Héctor Abad Gómez', 'Ignacio Vélez Escallón', 'Isla del Encanto',
+  'Juan XXIII - La Quiebra', 'Kennedy', 'La América', 'La Avanzada',
+  'La Candelaria', 'La Cruz', 'La Esperanza', 'La Esperanza N°2',
+  'La Florida', 'La Francia', 'La Frontera', 'La Gloria', 'La Isla',
+  'La Ladera', 'La Loma de Los Bernal', 'La Mota', 'La Palma',
+  'La Piñuela', 'La Rosa', 'La Salle', 'La Sierra', 'La Toma',
+  'La Unión', 'Las Brisas', 'Las Esmeraldas', 'Las Granjas',
+  'Las Independencias', 'Las Violetas', 'Laureles', 'Liceo', 'Loreto',
+  'Los Alcázares', 'Los Balsos N°1', 'Los Balsos N°2', 'Los Colores',
+  'Los Mangos', 'Lusitania', 'Manrique Central N°1', 'Manrique Central N°2',
+  'Manrique Oriental', 'Miramar', 'Moravia', 'Moscú N°1', 'Moscú N°2',
+  'Naranjal', 'Nuevos Conquistadores', 'Oriente', 'Pablo VI', 'Palermo',
+  'Patio Bonito', 'Pedregal', 'Perpetuo Socorro', 'Pie de La Popa',
+  'Pío XII', 'Popular', 'Quinta Linda', 'Robledo', 'Romélia', 'Rosales',
+  'San Antonio de Prado', 'San Cristóbal', 'San Diego', 'San Francisco',
+  'San Germán', 'San Isidro', 'San Javier N°1', 'San Javier N°2',
+  'San José La Cima N°1', 'San José La Cima N°2', 'San Luís',
+  'San Martín de Porres', 'San Miguel', 'San Pablo', 'San Pedro',
+  'Santa Cruz', 'Santa Elena', 'Santa Lucía', 'Santa María de Los Ángeles',
+  'Santa Mónica', 'Santo Domingo Savio N°1', 'Santo Domingo Savio N°2',
+  'Sevilla', 'Simón Bolívar', 'Socorro', 'Sucre', 'Suramericana',
+  'Tejelo', 'Toscana', 'Tricentenario', 'Trinidad', 'Universitario',
+  'Vallejuelos', 'Versalles N°1', 'Versalles N°2', 'Villa Carlota',
+  'Villa de Guadalupe', 'Villa del Socorro', 'Villa Hermosa', 'Villa Niquía',
+  'Villahermosa', 'Zamora',
+];
+
 function interpretarErrorVenndelo(errMsg: string): { causa: string; solucion: string } {
   const msg = errMsg.toLowerCase();
 
@@ -155,6 +195,7 @@ export function Facturas() {
   ]);
 
   const [tipoPedido, setTipoPedido] = useState<'local' | 'nacional'>('local');
+  const [barrioMedellin, setBarrioMedellin] = useState('');
   const [clienteApellido, setClienteApellido] = useState('');
   const [clienteEmail, setClienteEmail] = useState('');
   const [tipoIdentificacion, setTipoIdentificacion] = useState<'CC' | 'NIT'>('CC');
@@ -409,7 +450,8 @@ export function Facturas() {
         costo_envio: tipoPedido === 'nacional' ? costoEnvioFinal : 0,
         tipo_pedido: tipoPedido,
         payment_method_code: paymentMethod,
-        ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : ''
+        ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : '',
+        barrio_medellin: tipoPedido === 'local' ? barrioMedellin : ''
       });
 
       if (tipoPedido === 'nacional') {
@@ -597,6 +639,7 @@ export function Facturas() {
     setDescuento(0);
     setItems([{ tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
     setTipoPedido('local');
+    setBarrioMedellin('');
     setClienteApellido('');
     setClienteEmail('');
     setTipoIdentificacion('CC');
@@ -966,6 +1009,17 @@ export function Facturas() {
                 <Input label="Dirección" value={formData.cliente_direccion} onChange={e => setFormData({ ...formData, cliente_direccion: e.target.value })} />
               </div>
             </div>
+            {tipoPedido === 'local' && (
+              <Select
+                label="Barrio"
+                value={barrioMedellin}
+                onChange={e => setBarrioMedellin(e.target.value)}
+                options={[
+                  { value: '', label: 'Seleccionar barrio...' },
+                  ...BARRIOS_MEDELLIN.map(b => ({ value: b, label: b }))
+                ]}
+              />
+            )}
           </div>
 
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
