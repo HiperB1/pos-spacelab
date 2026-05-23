@@ -50,17 +50,23 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
   const PAGE_W = 283.46; // 100mm en puntos
   const PAGE_H = 268.98; // 95mm en puntos
 
-  // Escala dinámica: reduce fuente/padding de la tabla para que todos los ítems quepan en una página
+  // Escala global: comprime TODO el contenido proporcionalmente para garantizar exactamente 1 página
   const n = factura.items.length;
-  const headerMargin  = n > 3 ? 3 : 7;
-  const sectionMargin = n > 3 ? 4 : 10;
-  const BUDGET = n > 3 ? 92 : 80; // puntos disponibles para la tabla
-  let tfs = 11, tp = 5;           // table font size, table padding
-  while ((tfs * 1.1 + tp * 2) * (n + 1) + 2 > BUDGET) {
-    if (tp > 1) tp--;
-    else { tfs = Math.max(6, tfs - 1); tp = Math.max(1, Math.floor(tfs * 0.3)); }
-    if (tfs <= 6 && tp <= 1) break;
-  }
+  const CONTENT_H = PAGE_H - 16; // altura usable con márgenes 8+8
+
+  // Estimaciones a escala=1 considerando lineHeight real de Roboto (~1.17) y
+  // wrapping promedio de descripciones largas en columna estrecha:
+  //   H_HEADER=42  H_INFO=94  H_TABLE_HDR=20  H_ROW=26(promedio 1-2 líneas)  H_TOTALS=29  misc=8
+  const estimatedH = 42 + 94 + 20 + n * 26 + 29 + 8;
+  const scale = Math.min(1.0, (CONTENT_H * 0.90) / estimatedH);
+
+  const f = (base: number): number => Math.max(6, base * scale);
+  const m = (base: number): number => Math.max(0, base * scale);
+
+  const tfs = f(10);
+  const tp  = Math.max(1, m(4));
+  const headerMargin  = m(5);
+  const sectionMargin = m(7);
 
   const docDefinition: any = {
     pageSize: { width: PAGE_W, height: PAGE_H },
@@ -70,7 +76,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            fit: [99, 40],
+            fit: [m(99), m(38)],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -112,7 +118,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
       {
         table: {
           headerRows: 1,
-          widths: ['*', 22, 50, 50],
+          widths: ['*', 16, 44, 44],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
@@ -137,14 +143,14 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
           paddingTop: () => tp,
           paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 4]
+        margin: [0, 0, 0, m(4)]
       },
       {
         columns: [
           {
             stack: [
               ...(factura.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 4, 0, 2] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, m(4), 0, m(2)] },
                 { text: factura.notas, style: 'empresaInfo' }
               ] : [])
             ],
@@ -158,21 +164,21 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(factura.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               },
               ...(factura.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
                   { text: formatCurrency(factura.descuento), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               }] : []),
               ...(factura.costo_envio && factura.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(factura.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               }] : []),
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
@@ -180,7 +186,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
                   { text: 'TOTAL A PAGAR', style: 'totalLabelBold' },
                   { text: formatCurrency(factura.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 4, 0, 0]
+                margin: [0, m(4), 0, 0]
               }
             ]
           }
@@ -189,29 +195,29 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
       ...(factura.estado === 'anulada' ? [
         {
           text: '— FACTURA ANULADA —',
-          style: { color: '#000', bold: true, alignment: 'center', fontSize: 13 },
-          margin: [0, 8, 0, 2]
+          style: { color: '#000', bold: true, alignment: 'center', fontSize: f(13) },
+          margin: [0, m(8), 0, m(2)]
         },
         { text: `Motivo: ${factura.motivo_anulacion}`, style: 'empresaInfo', alignment: 'center' },
         { text: `Fecha anulación: ${factura.fecha_anulacion}`, style: 'empresaInfo', alignment: 'center' }
       ] : []),
     ],
     styles: {
-      header: { fontSize: 14, bold: true, color: '#000' },
-      title: { fontSize: 13, bold: true, color: '#000' },
-      invoiceNumber: { fontSize: 12, bold: true, color: '#000' },
-      subheader: { fontSize: 11, color: '#000' },
-      sectionTitle: { fontSize: 11, bold: true, color: '#000', margin: [0, 0, 0, 2] },
-      empresaNome: { fontSize: 12, bold: true },
-      empresaInfo: { fontSize: 11, color: '#000' },
-      clienteNome: { fontSize: 12, bold: true },
+      header: { fontSize: f(14), bold: true, color: '#000' },
+      title: { fontSize: f(13), bold: true, color: '#000' },
+      invoiceNumber: { fontSize: f(12), bold: true, color: '#000' },
+      subheader: { fontSize: f(11), color: '#000' },
+      sectionTitle: { fontSize: f(10), bold: true, color: '#000', margin: [0, 0, 0, m(2)] },
+      empresaNome: { fontSize: f(11), bold: true },
+      empresaInfo: { fontSize: f(10), color: '#000' },
+      clienteNome: { fontSize: f(11), bold: true },
       tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
       tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
-      totalLabel: { fontSize: 11, color: '#000', alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValue: { fontSize: 11, alignment: 'right' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#000' },
-      label: { fontSize: 11, color: '#000' }
+      totalLabel: { fontSize: f(10), color: '#000', alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValue: { fontSize: f(10), alignment: 'right' },
+      totalLabelBold: { fontSize: f(11), bold: true, alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValueBold: { fontSize: f(11), bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: f(10), color: '#000' }
     },
     defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
@@ -414,17 +420,24 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
   const PAGE_W = 283.46; // 100mm en puntos
   const PAGE_H = 268.98; // 95mm en puntos
 
-  // Escala dinámica: reduce fuente/padding de la tabla para que todos los ítems quepan en una página
+  // Escala global: comprime TODO el contenido proporcionalmente para garantizar exactamente 1 página
   const n = items.length;
-  const headerMargin  = n > 3 ? 3 : 7;
-  const sectionMargin = n > 3 ? 2 : 4;
-  const BUDGET = n > 3 ? 92 : 80;
-  let tfs = 11, tp = 5;
-  while ((tfs * 1.1 + tp * 2) * (n + 1) + 2 > BUDGET) {
-    if (tp > 1) tp--;
-    else { tfs = Math.max(6, tfs - 1); tp = Math.max(1, Math.floor(tfs * 0.3)); }
-    if (tfs <= 6 && tp <= 1) break;
-  }
+  const CONTENT_H = PAGE_H - 16; // altura usable con márgenes 8+8
+
+  // Estimaciones a escala=1 considerando lineHeight real de Roboto (~1.17) y
+  // wrapping promedio en columna de descripción. La cotización tiene línea extra
+  // (fecha vencimiento + "DETALLE DE LA COTIZACIÓN"):
+  //   H_HEADER=50  H_INFO=94  H_TABLE_HDR+DETALLE=28  H_ROW=26  H_TOTALS=29  misc=8
+  const estimatedH = 50 + 94 + 28 + n * 26 + 29 + 8;
+  const scale = Math.min(1.0, (CONTENT_H * 0.90) / estimatedH);
+
+  const f = (base: number): number => Math.max(6, base * scale);
+  const m = (base: number): number => Math.max(0, base * scale);
+
+  const tfs = f(10);
+  const tp  = Math.max(1, m(4));
+  const headerMargin  = m(5);
+  const sectionMargin = m(6);
 
   const docDefinition: any = {
     pageSize: { width: PAGE_W, height: PAGE_H },
@@ -434,7 +447,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            fit: [99, 40],
+            fit: [m(99), m(38)],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
@@ -478,12 +491,12 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
       {
         text: 'DETALLE DE LA COTIZACIÓN',
         style: 'sectionTitle',
-        margin: [0, 0, 0, 2]
+        margin: [0, 0, 0, m(2)]
       },
       {
         table: {
           headerRows: 1,
-          widths: ['*', 22, 50, 50],
+          widths: ['*', 16, 44, 44],
           body: [
             [
               { text: 'DESCRIPCIÓN', style: 'tableHeader' },
@@ -508,17 +521,17 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
           paddingTop: () => tp,
           paddingBottom: () => tp,
         },
-        margin: [0, 0, 0, 4]
+        margin: [0, 0, 0, m(4)]
       },
       {
         columns: [
           {
             stack: [
               ...(cotizacion.notas ? [
-                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, 4, 0, 2] },
+                { text: 'OBSERVACIONES', style: 'sectionTitle', margin: [0, m(4), 0, m(2)] },
                 { text: cotizacion.notas, style: 'empresaInfo' }
               ] : []),
-              { text: `Vigencia: ${cotizacion.validez_dias} días.`, style: 'validityNote', margin: [0, 4, 0, 0] }
+              { text: `Vigencia: ${cotizacion.validez_dias} días.`, style: 'validityNote', margin: [0, m(4), 0, 0] }
             ],
             width: '*'
           },
@@ -530,21 +543,21 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
                   { text: 'SUBTOTAL', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.subtotal), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               },
               ...(cotizacion.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
                   { text: '-' + formatCurrency(cotizacion.descuento), style: 'totalValueDiscount' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               }] : []),
               ...(cotizacion.costo_envio > 0 ? [{
                 columns: [
                   { text: 'ENVÍO', style: 'totalLabel' },
                   { text: formatCurrency(cotizacion.costo_envio), style: 'totalValue' }
                 ],
-                margin: [0, 0, 0, 3]
+                margin: [0, 0, 0, m(3)]
               }] : []),
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
@@ -552,7 +565,7 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
                   { text: 'TOTAL', style: 'totalLabelBold' },
                   { text: formatCurrency(cotizacion.total), style: 'totalValueBold' }
                 ],
-                margin: [0, 4, 0, 0]
+                margin: [0, m(4), 0, 0]
               }
             ]
           }
@@ -562,34 +575,34 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
         {
           text: `— ${cotizacion.estado.toUpperCase()} —`,
           style: {
-            fontSize: 13,
+            fontSize: f(13),
             bold: true,
             alignment: 'center',
             color: '#000'
           },
-          margin: [0, 8, 0, 0]
+          margin: [0, m(8), 0, 0]
         }
       ] : []),
     ],
     styles: {
-      header: { fontSize: 14, bold: true, color: '#000' },
-      title: { fontSize: 13, bold: true, color: '#000' },
-      invoiceNumber: { fontSize: 12, bold: true, color: '#000' },
-      subheader: { fontSize: 11, color: '#000' },
-      subheaderHighlight: { fontSize: 11, bold: true, color: '#000' },
-      sectionTitle: { fontSize: 11, bold: true, color: '#000', margin: [0, 0, 0, 2] },
-      empresaNome: { fontSize: 12, bold: true },
-      empresaInfo: { fontSize: 11, color: '#000' },
-      clienteNome: { fontSize: 12, bold: true },
+      header: { fontSize: f(14), bold: true, color: '#000' },
+      title: { fontSize: f(13), bold: true, color: '#000' },
+      invoiceNumber: { fontSize: f(12), bold: true, color: '#000' },
+      subheader: { fontSize: f(11), color: '#000' },
+      subheaderHighlight: { fontSize: f(11), bold: true, color: '#000' },
+      sectionTitle: { fontSize: f(10), bold: true, color: '#000', margin: [0, 0, 0, m(2)] },
+      empresaNome: { fontSize: f(11), bold: true },
+      empresaInfo: { fontSize: f(10), color: '#000' },
+      clienteNome: { fontSize: f(11), bold: true },
       tableHeader: { fontSize: tfs, bold: true, color: '#fff', fillColor: '#333', margin: [0, 1, 0, 1] },
       tableCell: { fontSize: tfs, margin: [0, 1, 0, 1] },
-      totalLabel: { fontSize: 11, color: '#000', alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValue: { fontSize: 11, alignment: 'right' },
-      totalValueDiscount: { fontSize: 11, alignment: 'right', color: '#000' },
-      totalLabelBold: { fontSize: 12, bold: true, alignment: 'right', margin: [0, 0, 4, 0] },
-      totalValueBold: { fontSize: 12, bold: true, alignment: 'right', color: '#000' },
-      label: { fontSize: 11, color: '#000' },
-      validityNote: { fontSize: 11, color: '#000', italics: true }
+      totalLabel: { fontSize: f(10), color: '#000', alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValue: { fontSize: f(10), alignment: 'right' },
+      totalValueDiscount: { fontSize: f(10), alignment: 'right', color: '#000' },
+      totalLabelBold: { fontSize: f(11), bold: true, alignment: 'right', margin: [0, 0, m(4), 0] },
+      totalValueBold: { fontSize: f(11), bold: true, alignment: 'right', color: '#000' },
+      label: { fontSize: f(10), color: '#000' },
+      validityNote: { fontSize: f(10), color: '#000', italics: true }
     },
     defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
