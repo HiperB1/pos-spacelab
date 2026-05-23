@@ -365,6 +365,7 @@ export function createFactura(data: any): any {
     cliente_nit: data.cliente_nit,
     tipo_identificacion: data.tipo_identificacion || 'CC',
     cliente_direccion: data.cliente_direccion,
+    barrio_medellin: data.barrio_medellin || '',
     fecha: new Date().toISOString().split('T')[0],
     subtotal,
     iva,

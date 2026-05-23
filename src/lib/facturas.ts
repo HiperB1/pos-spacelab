@@ -34,6 +34,7 @@ export function createFactura(data: {
   tipo_pedido?: 'local' | 'nacional';
   payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
   ciudad_destino?: string;
+  barrio_medellin?: string;
 }): Factura & { items: FacturaItem[] } {
   const factura = db.createFactura(data);
   showToast.success('Factura creada exitosamente');

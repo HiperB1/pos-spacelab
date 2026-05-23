@@ -310,6 +310,7 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
               { text: factura.cliente_nome.toUpperCase(), style: 'clienteNome' },
               ...(factura.cliente_celular ? [{ text: `Tel: ${factura.cliente_celular}`, style: 'empresaInfo' }] : []),
               ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
+              ...(factura.barrio_medellin ? [{ text: `Barrio: ${factura.barrio_medellin}`, style: 'empresaInfo' }] : []),
             ],
             width: '*'
           },
