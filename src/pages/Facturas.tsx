@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
 import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
-import { getCiudades, createOrder, createShipment, generateLabel, getOrder, type CreateOrderResult } from '../lib/venndelo';
+import { getCiudades, createOrder, createShipment, generateLabel, getOrder, cancelOrder, type CreateOrderResult } from '../lib/venndelo';
 import { cotizarEnvioSimple, type ItemEnvio } from '../lib/envio';
 import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
@@ -651,9 +651,26 @@ export function Facturas() {
     setShowVenndeloSuccess(false);
   }
 
-  function handleAnular() {
+  async function handleAnular() {
     if (showAnular && motivoAnulacion.trim()) {
       anularFactura(showAnular.id, motivoAnulacion);
+
+      // Si es envío nacional, cancelar el pedido en Venndelo
+      if (showAnular.tipo_pedido === 'nacional' && showAnular.venndelo_order_id) {
+        const config = getConfiguracion();
+        if (config.api_key_venndelo) {
+          try {
+            await cancelOrder(showAnular.venndelo_order_id, config.api_key_venndelo);
+            updateFacturaVenndelo(showAnular.id, {
+              venndeloOrderId: showAnular.venndelo_order_id,
+              status: 'CANCELLED'
+            });
+          } catch (e: any) {
+            toast.warning('Factura anulada localmente, pero no se pudo cancelar en Venndelo: ' + (e?.message || e));
+          }
+        }
+      }
+
       toast.success('Factura anulada correctamente');
       setShowAnular(null);
       setMotivoAnulacion('');
@@ -710,6 +727,40 @@ export function Facturas() {
 
   async function handleViewGuia(factura: any) {
     await gerarPDFGuia(factura);
+  }
+
+  async function handleRegenerateVenndeloLabel(factura: any) {
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.error('API Key de Venndelo no configurada');
+      return;
+    }
+    const orderId = factura.venndelo_order_id;
+    if (!orderId) {
+      toast.error('No hay Order ID de Venndelo para esta factura');
+      return;
+    }
+    toast.loading('Generando guía de envío desde Venndelo...', { id: 'regen-label' });
+    try {
+      const label = await generateLabel(orderId, config.api_key_venndelo);
+      const filename = `guia_${factura.numero}.pdf`;
+      const localPath = await downloadGuideLocally(label.labelUrl, filename);
+      updateFacturaVenndelo(factura.id, {
+        venndeloOrderId: orderId,
+        labelUrl: label.labelUrl,
+        tracking: label.tracking || factura.venndelo_tracking,
+        venndeloLabelLocalPath: localPath || undefined
+      });
+      loadData();
+      toast.success('¡Guía generada!', { id: 'regen-label' });
+      if (localPath) {
+        await openLocalGuide(localPath, label.labelUrl);
+      } else {
+        await openExternalUrl(label.labelUrl);
+      }
+    } catch (e: any) {
+      toast.error('Error al generar la guía desde Venndelo: ' + (e?.message || e), { id: 'regen-label' });
+    }
   }
 
   async function handleViewVenndeloOrder(factura: any) {
@@ -1473,7 +1524,7 @@ export function Facturas() {
               ) : (
                 <Button variant="secondary" onClick={() => {
                   setShowVenndeloOrder(false);
-                  handleViewGuia(venndeloOrderInfo.factura);
+                  handleRegenerateVenndeloLabel(venndeloOrderInfo.factura);
                 }}>
                   <RefreshCw className="w-4 h-4 mr-2" /> Generar Guía de Envío
                 </Button>
