@@ -358,10 +358,8 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
           }]]
         },
         layout: {
-          hLineWidth: () => 1.5,
-          vLineWidth: () => 1.5,
-          hLineColor: () => '#000000',
-          vLineColor: () => '#000000',
+          hLineWidth: () => 0,
+          vLineWidth: () => 0,
         },
         margin: [0, 0, 0, 0]
       },
