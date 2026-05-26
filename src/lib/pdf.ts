@@ -4,23 +4,52 @@ import * as db from './database';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
+import chunkoBoldBase64 from './chunkoFont';
 
-// Initialize pdfmake fonts at runtime to avoid build issues
-if (typeof window !== 'undefined') {
-  import('pdfmake/build/vfs_fonts').then((pdfFonts: any) => {
+let fontsReady = false;
+let fontsReadyPromise: Promise<void> | null = null;
+
+async function initFonts(): Promise<void> {
+  if (fontsReady) return;
+  if (fontsReadyPromise) return fontsReadyPromise;
+  fontsReadyPromise = (async () => {
     try {
-      if (pdfFonts?.pdfMake?.vfs) {
-        (pdfMake as any).vfs = pdfFonts.pdfMake.vfs;
-      }
-    } catch (e) {
-      console.warn('[PDF] Failed to load fonts:', e);
+      const pdfFonts: any = await import('pdfmake/build/vfs_fonts');
+      // vfs_fonts.js usa module.exports = vfs, que Vite expone como .default
+      const vfsData = pdfFonts?.default ?? pdfFonts?.pdfMake?.vfs ?? {};
+      (pdfMake as any).vfs = {
+        ...vfsData,
+        'chunko-bold.ttf': chunkoBoldBase64,
+      };
+    } catch {
+      (pdfMake as any).vfs = {
+        ...((pdfMake as any).vfs || {}),
+        'chunko-bold.ttf': chunkoBoldBase64,
+      };
     }
-  }).catch(e => console.warn('[PDF] Font import failed:', e));
+    (pdfMake as any).fonts = {
+      ...((pdfMake as any).fonts || {}),
+      Roboto: {
+        normal: 'Roboto-Regular.ttf',
+        bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: 'Roboto-MediumItalic.ttf',
+      },
+      ChunkoBold: {
+        normal: 'chunko-bold.ttf',
+        bold: 'chunko-bold.ttf',
+        italics: 'chunko-bold.ttf',
+        bolditalics: 'chunko-bold.ttf',
+      },
+    };
+    fontsReady = true;
+  })();
+  return fontsReadyPromise;
 }
-
 
 async function getBase64ImageFromURL(url: string): Promise<string> {
   const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -29,8 +58,28 @@ async function getBase64ImageFromURL(url: string): Promise<string> {
   });
 }
 
+
+function pdfToBase64(docDefinition: any): Promise<string> {
+  return Promise.race([
+    new Promise<string>((resolve, reject) => {
+      try {
+        // @ts-ignore - pdfmake types are broken
+        const gen = pdfMake.createPdf(docDefinition);
+        // @ts-ignore
+        gen.getBase64((base64: string) => resolve(base64));
+      } catch (e) {
+        reject(e);
+      }
+    }),
+    new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error('Tiempo de generación de PDF agotado')), 15000)
+    ),
+  ]);
+}
+
 export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] }): Promise<void> {
   const toastId = toast.loading('Generando PDF...');
+
   
   const config = db.getConfiguracion();
   const empresaNome = config.empresa_nome || 'My Space';
@@ -223,15 +272,12 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
   };
 
   try {
-    // @ts-ignore - pdfmake types are broken
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    // @ts-ignore
-    pdfDocGenerator.getBase64(async (base64: string) => {
-      const fileName = `factura_${factura.numero}.pdf`;
-      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
-      await openPath(path);
-      toast.success('PDF generado correctamente', { id: toastId });
-    });
+    await initFonts();
+    const base64 = await pdfToBase64(docDefinition);
+    const fileName = `factura_${factura.numero}.pdf`;
+    const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+    await openPath(path);
+    toast.success('PDF generado correctamente', { id: toastId });
   } catch (error) {
     console.error('Error al generar PDF:', error);
     toast.error('Error al generar el PDF', { id: toastId });
@@ -240,52 +286,42 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
 
 export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }): Promise<void> {
   const toastId = toast.loading('Generando Guía de Envío...');
-
-  const config = db.getConfiguracion();
-  const empresaNome = config.empresa_nome || 'My Space';
-  const empresaTelefono = config.empresa_telefono || '';
-  const empresaDireccion = config.empresa_direccion || '';
-
-  // 100mm × 95mm (dimensiones exactas del papel de la impresora POS)
-  const PAGE_W = 283.46; // 100mm en puntos
-  const PAGE_H = 268.98; // 95mm en puntos
-
-  let logoBase64 = '';
   try {
-    logoBase64 = await getBase64ImageFromURL('/myspace-logo.png');
-  } catch (e) {
-    console.error('Error cargando logo:', e);
-  }
+  
 
-  // Ancho del contenido: PAGE_W - márgenes laterales (12 × 2)
-  const CONTENT_W = PAGE_W - 24;
+    const config = db.getConfiguracion();
+    const empresaNome = config.empresa_nome || 'My Space';
+    const qrRaw = config.qr_guia || '';
+    const qrGuia = qrRaw.startsWith('data:') ? qrRaw : '';
 
-  const docDefinition: any = {
-    pageSize: { width: PAGE_W, height: PAGE_H },
-    pageMargins: [12, 12, 12, 12],
-    // Marco negro en el límite del PDF
-    background: (_page: number, pageSize: any) => ({
-      canvas: [{
-        type: 'rect',
-        x: 4, y: 4,
-        w: pageSize.width - 8,
-        h: pageSize.height - 8,
-        lineWidth: 2.5,
-        lineColor: '#000000',
-        r: 2
-      }]
-    }),
-    content: [
-      // Cabecera: logo + título
+    const PAGE_W = 283.46;
+    const PAGE_H = 268.98;
+    const INNER_W = PAGE_W - 32; // contenido dentro del borde (márgenes 4+borde+8 a cada lado)
+
+    let logoBase64 = '';
+    try {
+      logoBase64 = await getBase64ImageFromURL('/myspace-logo.png');
+    } catch (e) {
+      console.error('Error cargando logo:', e);
+    }
+
+    let iconoGuiaBase64 = '';
+    try {
+      iconoGuiaBase64 = await getBase64ImageFromURL('/spacelab-icon.png');
+    } catch (e) {
+      console.error('Error cargando ícono guía:', e);
+    }
+
+    const innerContent: any[] = [
       {
         columns: [
           logoBase64 ? {
             image: logoBase64,
-            fit: [90, 38],
+            fit: [94.5, 39.9],
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
-              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right', fontSize: 12 },
+              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right', fontSize: 11, bold: true },
               { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right', fontSize: 11 },
               { text: factura.fecha, style: 'subheader', alignment: 'right', fontSize: 10 }
             ],
@@ -294,42 +330,24 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
         ],
         margin: [0, 0, 0, 1]
       },
-      // Línea negra decorativa bajo la cabecera
       {
         canvas: [
-          { type: 'rect', x: 0, y: 0, w: CONTENT_W, h: 2, r: 0, color: '#000000' }
+          { type: 'rect', x: 0, y: 0, w: INNER_W, h: 2, color: '#000000' }
         ],
         margin: [0, 0, 0, 5]
       },
-      // Secciones remitente / destinatario
       {
-        columns: [
-          {
-            stack: [
-              { text: 'DESTINATARIO', style: 'sectionTitle' },
-              { text: factura.cliente_nome.toUpperCase(), style: 'clienteNome' },
-              ...(factura.cliente_celular ? [{ text: `Tel: ${factura.cliente_celular}`, style: 'empresaInfo' }] : []),
-              ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
-              ...(factura.barrio_medellin ? [{ text: `Barrio: ${factura.barrio_medellin}`, style: 'empresaInfo' }] : []),
-            ],
-            width: '*'
-          },
-          {
-            stack: [
-              { text: 'REMITENTE', style: 'sectionTitle', fontSize: 10 },
-              { text: empresaNome, style: 'empresaNome', fontSize: 11 },
-              { text: empresaDireccion, style: 'empresaInfo', fontSize: 10 },
-              { text: `Tel: ${empresaTelefono}`, style: 'empresaInfo', fontSize: 10 },
-            ],
-            width: '*'
-          }
+        stack: [
+          { text: factura.cliente_nome.toUpperCase(), style: 'clienteNome' },
+          ...(factura.cliente_celular ? [{ text: `Tel: ${factura.cliente_celular}`, style: 'empresaInfo' }] : []),
+          ...(factura.cliente_direccion ? [{ text: factura.cliente_direccion, style: 'empresaInfo' }] : []),
+          ...(factura.barrio_medellin ? [{ text: `Barrio: ${factura.barrio_medellin}`, style: 'empresaInfo' }] : []),
         ],
         margin: [0, 0, 0, 4]
       },
-      // Separador con puntos simulando estrellas (todo en negro)
       {
         canvas: [
-          { type: 'line', x1: 0, y1: 4, x2: CONTENT_W, y2: 4, lineWidth: 0.5, lineColor: '#000000' },
+          { type: 'line', x1: 0, y1: 4, x2: INNER_W, y2: 4, lineWidth: 0.5, lineColor: '#000000' },
           { type: 'ellipse', x: 20,  y: 4, r1: 2.0, r2: 2.0, color: '#000000' },
           { type: 'ellipse', x: 58,  y: 4, r1: 1.1, r2: 1.1, color: '#000000' },
           { type: 'ellipse', x: 96,  y: 4, r1: 1.5, r2: 1.5, color: '#000000' },
@@ -340,64 +358,89 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
         ],
         margin: [0, 0, 0, 4]
       },
-      // Bloque de agradecimiento con marco negro (sin fondo)
       {
         table: {
-          widths: ['*'],
-          body: [[{
-            stack: [
-              { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
-              { text: 'POR RECIBIR UN FRAGMENTO DE NUESTRO UNIVERSO', style: 'thanksSubtitle', characterSpacing: 1 },
-              {
-                text: 'Cada creación fue hecha con detalle, imaginación e ideas de otro mundo. Esperamos que este nuevo artefacto encuentre su lugar en tu espacio y lo haga aún más tuyo.',
-                style: 'thanksBody',
-                margin: [0, 5, 0, 0]
-              },
-            ],
-            margin: [8, 7, 8, 7]
-          }]]
+          widths: qrGuia ? ['*', 118] : ['*'],
+          body: [[
+            {
+              stack: [
+                { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
+                { text: 'POR SEGUIR JUGANDO', style: 'thanksSubtitle', characterSpacing: 1 },
+                { text: '¡Disfruta cada aventura!', style: 'thanksBody', margin: [0, 5, 0, 0] },
+                ...(iconoGuiaBase64 ? [{
+                  image: iconoGuiaBase64,
+                  fit: [70, 70],
+                  alignment: 'left',
+                  margin: [0, 8, 0, 0]
+                }] : []),
+              ],
+              margin: [8, 7, qrGuia ? 4 : 8, 7]
+            },
+            ...(qrGuia ? [{
+              image: qrGuia,
+              fit: [108, 108],
+              alignment: 'center',
+              margin: [4, 22, 4, 4]
+            }] : [])
+          ]]
         },
         layout: {
           hLineWidth: () => 0,
           vLineWidth: () => 0,
+          paddingLeft: () => 0,
+          paddingRight: () => 0,
+          paddingTop: () => 0,
+          paddingBottom: () => 0,
         },
         margin: [0, 0, 0, 0]
       },
-    ],
-    styles: {
-      header:       { fontSize: 14, bold: true, color: '#000' },
-      title:        { fontSize: 12, bold: true, color: '#000' },
-      invoiceNumber:{ fontSize: 11, bold: true, color: '#000' },
-      subheader:    { fontSize: 10, color: '#000' },
-      sectionTitle: { fontSize: 10, bold: true, color: '#000', margin: [0, 0, 0, 2] },
-      empresaNome:  { fontSize: 11, bold: true, color: '#000' },
-      empresaInfo:  { fontSize: 10, color: '#000' },
-      clienteNome:  { fontSize: 11, bold: true, color: '#000' },
-      thanksTitle:   { fontSize: 16, bold: true, color: '#000' },
-      thanksSubtitle:{ fontSize: 8.5, bold: true, color: '#000', margin: [0, 2, 0, 0] },
-      thanksBody:    { fontSize: 9, color: '#000', lineHeight: 1.35 },
-    },
-    defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
-  };
+    ];
 
-  try {
-    // @ts-ignore - pdfmake types are broken
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    // @ts-ignore
-    pdfDocGenerator.getBase64(async (base64: string) => {
-      const fileName = `guia_${factura.numero}.pdf`;
-      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
-      await openPath(path);
-      toast.success('Guía de envío generada', { id: toastId });
-    });
+    const docDefinition: any = {
+      pageSize: { width: PAGE_W, height: PAGE_H },
+      pageMargins: [12, 12, 12, 12],
+      background: (_currentPage: number, pageSize: { width: number; height: number }) => ({
+        canvas: [{
+          type: 'rect',
+          x: 4, y: 4,
+          w: pageSize.width - 8,
+          h: pageSize.height - 8,
+          lineWidth: 2.5,
+          lineColor: '#000000'
+        }]
+      }),
+      content: [{ stack: innerContent }],
+      styles: {
+        header:        { fontSize: 14, bold: true, color: '#000' },
+        title:         { fontSize: 12, bold: true, color: '#000' },
+        invoiceNumber: { fontSize: 11, bold: true, color: '#000' },
+        subheader:     { fontSize: 10, color: '#000' },
+        sectionTitle:  { fontSize: 10, bold: true, color: '#000', margin: [0, 0, 0, 2] },
+        empresaNome:   { fontSize: 11, bold: true, color: '#000' },
+        empresaInfo:   { fontSize: 10, color: '#000' },
+        clienteNome:   { fontSize: 11, bold: true, color: '#000' },
+        thanksTitle:   { fontSize: 16, bold: true, color: '#000' },
+        thanksSubtitle:{ fontSize: 8.5, bold: true, color: '#000', margin: [0, 2, 0, 0] },
+        thanksBody:    { fontSize: 9, color: '#000', lineHeight: 1.35 },
+      },
+      defaultStyle: { font: 'Roboto', color: '#000' }
+    };
+
+    await initFonts();
+    const base64 = await pdfToBase64(docDefinition);
+    const fileName = `guia_${factura.numero}.pdf`;
+    const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+    await openPath(path);
+    toast.success('Guía de envío generada', { id: toastId });
   } catch (error) {
     console.error('Error al generar guía:', error);
-    toast.error('Error al generar la guía', { id: toastId });
+    toast.error(`Error al generar la guía: ${(error as any)?.message ?? error}`, { id: toastId });
   }
 }
 
 export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
   const toastId = toast.loading('Generando PDF de cotización...');
+
   
   const config = db.getConfiguracion();
   const empresaNome = config.empresa_nome || 'My Space';
@@ -605,17 +648,14 @@ export async function gerarPDFCotizacion(cotizacion: any): Promise<void> {
     },
     defaultStyle: { font: 'Roboto', bold: true, color: '#000' }
   };
-  
+
   try {
-    // @ts-ignore - pdfmake types are broken
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
-    // @ts-ignore
-    pdfDocGenerator.getBase64(async (base64: string) => {
-      const fileName = `cotizacion_${cotizacion.numero}.pdf`;
-      const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
-      await openPath(path);
-      toast.success('PDF de cotización generado correctamente', { id: toastId });
-    });
+    await initFonts();
+    const base64 = await pdfToBase64(docDefinition);
+    const fileName = `cotizacion_${cotizacion.numero}.pdf`;
+    const path = await invoke<string>('save_file', { filename: fileName, subfolder: 'PDFs', data: base64 });
+    await openPath(path);
+    toast.success('PDF de cotización generado correctamente', { id: toastId });
   } catch (error) {
     console.error('Error al generar PDF de cotización:', error);
     toast.error('Error al generar el PDF de cotización', { id: toastId });

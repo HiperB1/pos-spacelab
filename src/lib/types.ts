@@ -166,6 +166,7 @@ export interface Configuracion {
   alto_default_cm?: number;
   ancho_default_cm?: number;
   largo_default_cm?: number;
+  qr_guia?: string;
 }
 
 export interface Cotizacion {
