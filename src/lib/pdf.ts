@@ -369,18 +369,18 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
                 { text: '¡Disfruta cada aventura!', style: 'thanksBody', margin: [0, 5, 0, 0] },
                 ...(iconoGuiaBase64 ? [{
                   image: iconoGuiaBase64,
-                  fit: [70, 70],
+                  fit: [58, 58],
                   alignment: 'left',
-                  margin: [0, 8, 0, 0]
+                  margin: [0, 4, 0, 0]
                 }] : []),
               ],
-              margin: [8, 7, qrGuia ? 4 : 8, 7]
+              margin: [8, 5, qrGuia ? 4 : 8, 5]
             },
             ...(qrGuia ? [{
               image: qrGuia,
-              fit: [108, 108],
+              fit: [90, 90],
               alignment: 'center',
-              margin: [4, 22, 4, 4]
+              margin: [4, 8, 4, 4]
             }] : [])
           ]]
         },

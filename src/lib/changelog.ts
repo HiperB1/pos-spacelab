@@ -8,6 +8,13 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.3",
+    fecha: "2026-05-26",
+    correcciones: [
+      "La guía de envío local ahora se genera en una sola página: el ícono de SpaceLab aparece correctamente debajo del texto de agradecimiento",
+    ],
+  },
+  {
     version: "1.0.2",
     fecha: "2026-05-26",
     novedades: [
