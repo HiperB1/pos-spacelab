@@ -458,6 +458,23 @@ export async function createOrder(
   const pickupPhone = config.empresa_telefono || factura.cliente_celular || '3000000000';
   const pickupAddress = config.empresa_direccion || factura.cliente_direccion || 'Dirección no especificada';
 
+  const itemsTotal = items.reduce((sum, i) => sum + i.precio * i.quantidade, 0);
+  const descuento = factura.descuento || 0;
+  const itemsAjustados: typeof items = (() => {
+    if (descuento <= 0 || itemsTotal <= 0 || descuento >= itemsTotal) return items;
+    const targetTotal = itemsTotal - descuento;
+    let asignado = 0;
+    return items.map((item, idx) => {
+      if (idx < items.length - 1) {
+        const newItemTotal = Math.round((item.precio * item.quantidade / itemsTotal) * targetTotal);
+        asignado += newItemTotal;
+        return { ...item, precio: newItemTotal / item.quantidade };
+      } else {
+        return { ...item, precio: (targetTotal - asignado) / item.quantidade };
+      }
+    });
+  })();
+
   const body = {
     pickup_info: {
       contact_name: config.empresa_nome || 'Tienda',
@@ -487,7 +504,7 @@ export async function createOrder(
       postal_code: '',
       phone: factura.cliente_celular || ''
     },
-    line_items: items.map((item, idx) => ({
+    line_items: itemsAjustados.map((item, idx) => ({
       ...(item.venndelo_id ? { product_id: item.venndelo_id } : {}),
       sku: item.codigo || `ITEM-${idx + 1}`,
       name: item.descripcion,
