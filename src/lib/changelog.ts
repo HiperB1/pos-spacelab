@@ -8,6 +8,25 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.2",
+    fecha: "2026-05-26",
+    novedades: [
+      "Ícono decorativo (nave espacial) en la sección de agradecimientos de la guía de envío local",
+      "QR de la guía de envío local configurable desde Configuración: subir, previsualizar y eliminar la imagen",
+      "Campo de barrio de Medellín en pedidos locales",
+    ],
+    mejoras: [
+      "Nuevo ícono de la aplicación",
+      "Funciones de generación de PDF convertidas a useCallback para evitar re-renders innecesarios",
+    ],
+    correcciones: [
+      "Timeout corregido en la generación de la guía de envío local",
+      "Cancelación automática del pedido en Venndelo al anular una factura nacional",
+      "Regeneración de guía Venndelo corregida después de anulación",
+      "Recuadro negro eliminado de la sección de agradecimientos en la guía local",
+    ],
+  },
+  {
     version: "1.0.1",
     fecha: "2026-05-22",
     mejoras: [
