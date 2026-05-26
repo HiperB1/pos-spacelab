@@ -15,15 +15,26 @@ async function initFonts(): Promise<void> {
   fontsReadyPromise = (async () => {
     try {
       const pdfFonts: any = await import('pdfmake/build/vfs_fonts');
+      // vfs_fonts.js usa module.exports = vfs, que Vite expone como .default
+      const vfsData = pdfFonts?.default ?? pdfFonts?.pdfMake?.vfs ?? {};
       (pdfMake as any).vfs = {
-        ...(pdfFonts?.pdfMake?.vfs ?? {}),
+        ...vfsData,
         'chunko-bold.ttf': chunkoBoldBase64,
       };
     } catch {
-      (pdfMake as any).vfs = { 'chunko-bold.ttf': chunkoBoldBase64 };
+      (pdfMake as any).vfs = {
+        ...((pdfMake as any).vfs || {}),
+        'chunko-bold.ttf': chunkoBoldBase64,
+      };
     }
     (pdfMake as any).fonts = {
       ...((pdfMake as any).fonts || {}),
+      Roboto: {
+        normal: 'Roboto-Regular.ttf',
+        bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: 'Roboto-MediumItalic.ttf',
+      },
       ChunkoBold: {
         normal: 'chunko-bold.ttf',
         bold: 'chunko-bold.ttf',
@@ -302,7 +313,7 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
           } : { text: empresaNome, style: 'header', width: '*' },
           {
             stack: [
-              { text: 'GUIA DE ENVIO LOCAL', style: 'title', alignment: 'right', fontSize: 11, bold: true },
+              { text: 'GUÍA DE ENVÍO LOCAL', style: 'title', alignment: 'right', fontSize: 11, bold: true },
               { text: `No. ${factura.numero}`, style: 'invoiceNumber', alignment: 'right', fontSize: 11 },
               { text: factura.fecha, style: 'subheader', alignment: 'right', fontSize: 10 }
             ],
@@ -347,7 +358,7 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
               stack: [
                 { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
                 { text: 'POR SEGUIR JUGANDO', style: 'thanksSubtitle', characterSpacing: 1 },
-                { text: 'Disfruta cada aventura!', style: 'thanksBody', margin: [0, 5, 0, 0] },
+                { text: '¡Disfruta cada aventura!', style: 'thanksBody', margin: [0, 5, 0, 0] },
               ],
               margin: [8, 7, qrGuia ? 4 : 8, 7]
             },
