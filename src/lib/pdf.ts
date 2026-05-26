@@ -58,6 +58,7 @@ async function getBase64ImageFromURL(url: string): Promise<string> {
   });
 }
 
+
 function pdfToBase64(docDefinition: any): Promise<string> {
   return Promise.race([
     new Promise<string>((resolve, reject) => {
@@ -304,6 +305,13 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
       console.error('Error cargando logo:', e);
     }
 
+    let iconoGuiaBase64 = '';
+    try {
+      iconoGuiaBase64 = await getBase64ImageFromURL('/spacelab-icon.png');
+    } catch (e) {
+      console.error('Error cargando ícono guía:', e);
+    }
+
     const innerContent: any[] = [
       {
         columns: [
@@ -352,21 +360,27 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
       },
       {
         table: {
-          widths: qrGuia ? ['*', 105] : ['*'],
+          widths: qrGuia ? ['*', 118] : ['*'],
           body: [[
             {
               stack: [
                 { text: 'GRACIAS', style: 'thanksTitle', characterSpacing: 4 },
                 { text: 'POR SEGUIR JUGANDO', style: 'thanksSubtitle', characterSpacing: 1 },
                 { text: '¡Disfruta cada aventura!', style: 'thanksBody', margin: [0, 5, 0, 0] },
+                ...(iconoGuiaBase64 ? [{
+                  image: iconoGuiaBase64,
+                  fit: [70, 70],
+                  alignment: 'left',
+                  margin: [0, 8, 0, 0]
+                }] : []),
               ],
               margin: [8, 7, qrGuia ? 4 : 8, 7]
             },
             ...(qrGuia ? [{
               image: qrGuia,
-              fit: [90, 90],
+              fit: [108, 108],
               alignment: 'center',
-              margin: [4, 4, 8, 4]
+              margin: [4, 22, 4, 4]
             }] : [])
           ]]
         },
@@ -384,26 +398,18 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
 
     const docDefinition: any = {
       pageSize: { width: PAGE_W, height: PAGE_H },
-      pageMargins: [4, 4, 4, 4],
-      content: [
-        {
-          table: {
-            widths: ['*'],
-            heights: [PAGE_H - 8],
-            body: [[{ stack: innerContent, margin: [8, 8, 8, 8] }]]
-          },
-          layout: {
-            hLineWidth: () => 2.5,
-            vLineWidth: () => 2.5,
-            hLineColor: () => '#000000',
-            vLineColor: () => '#000000',
-            paddingLeft: () => 0,
-            paddingRight: () => 0,
-            paddingTop: () => 0,
-            paddingBottom: () => 0,
-          }
-        }
-      ],
+      pageMargins: [12, 12, 12, 12],
+      background: (_currentPage: number, pageSize: { width: number; height: number }) => ({
+        canvas: [{
+          type: 'rect',
+          x: 4, y: 4,
+          w: pageSize.width - 8,
+          h: pageSize.height - 8,
+          lineWidth: 2.5,
+          lineColor: '#000000'
+        }]
+      }),
+      content: [{ stack: innerContent }],
       styles: {
         header:        { fontSize: 14, bold: true, color: '#000' },
         title:         { fontSize: 12, bold: true, color: '#000' },
