@@ -5,7 +5,7 @@ import { getTransactionalCounts, resetTransactionalData } from '../lib/database'
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ChangelogModal } from '../components/ChangelogModal';
-import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles, Trash2 } from 'lucide-react';
+import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles, Trash2, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -264,6 +264,58 @@ export function ConfiguracionPage() {
                     value={config.empresa_email}
                     onChange={e => setConfig({...config, empresa_email: e.target.value})}
                   />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <h4 className="text-sm font-semibold text-white/50 uppercase tracking-wider">QR Guía de Envío</h4>
+                <p className="text-xs text-white/40">El QR se imprime a la derecha del bloque de "Gracias" en las guías de envío local.</p>
+                <div className="flex items-start gap-4">
+                  {config.qr_guia && (
+                    <div className="flex-shrink-0">
+                      <img src={config.qr_guia} alt="QR actual" className="w-20 h-20 rounded-lg border border-white/10 object-contain bg-white p-1" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="cursor-pointer">
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-lg border border-white/10 hover:border-primary/50 transition-colors text-sm text-white/70 hover:text-white">
+                        <QrCode className="w-4 h-4" />
+                        {config.qr_guia ? 'Cambiar QR' : 'Subir QR'}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const base64 = ev.target?.result as string;
+                            updateConfiguracion({ qr_guia: base64 });
+                            setConfig(getConfiguracion());
+                            toast.success('QR guardado');
+                          };
+                          reader.readAsDataURL(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {config.qr_guia && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateConfiguracion({ qr_guia: undefined });
+                          setConfig(getConfiguracion());
+                          toast.success('QR eliminado');
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/20 hover:border-red-500/50 transition-colors text-sm text-red-400/70 hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Eliminar QR
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

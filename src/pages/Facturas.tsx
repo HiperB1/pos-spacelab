@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
 import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
@@ -678,9 +678,9 @@ export function Facturas() {
     }
   }
 
-  async function handleViewPDF(factura: any) {
+  const handleViewPDF = useCallback(async (factura: any) => {
     await gerarPDFFactura(factura);
-  }
+  }, []);
 
   async function openExternalUrl(url: string) {
     try {
@@ -725,9 +725,9 @@ export function Facturas() {
     }
   }
 
-  async function handleViewGuia(factura: any) {
+  const handleViewGuia = useCallback(async (factura: any) => {
     await gerarPDFGuia(factura);
-  }
+  }, []);
 
   async function handleRegenerateVenndeloLabel(factura: any) {
     const config = getConfiguracion();
@@ -763,7 +763,7 @@ export function Facturas() {
     }
   }
 
-  async function handleViewVenndeloOrder(factura: any) {
+  const handleViewVenndeloOrder = useCallback(async (factura: any) => {
     const config = getConfiguracion();
 
     // Obtener la factura más actualizada desde la base de datos
@@ -841,7 +841,7 @@ export function Facturas() {
       message: !order ? 'No se pudo obtener la información desde Venndelo.' : undefined
     });
     setVenndeloOrderLoading(false);
-  }
+  }, [setVenndeloOrderInfo, setShowVenndeloOrder, setVenndeloOrderLoading]);
 
   async function handleExportar(formato: 'excel' | 'csv') {
     const data = facturasFiltradas.map(f => ({
@@ -940,7 +940,7 @@ export function Facturas() {
         </div>
       )
     }
-  ], []);
+  ], [handleViewPDF, handleViewGuia, handleViewVenndeloOrder]);
 
   return (
     <div className="space-y-6">
