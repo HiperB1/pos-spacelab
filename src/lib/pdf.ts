@@ -360,7 +360,7 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
       },
       {
         table: {
-          widths: qrGuia ? ['*', 118] : ['*'],
+          widths: qrGuia ? ['*', 120] : ['*'],
           body: [[
             {
               stack: [
@@ -378,9 +378,9 @@ export async function gerarPDFGuia(factura: Factura & { items: FacturaItem[] }):
             },
             ...(qrGuia ? [{
               image: qrGuia,
-              fit: [90, 90],
+              fit: [104, 104],
               alignment: 'center',
-              margin: [4, 8, 4, 4]
+              margin: [4, 18, 4, 4]
             }] : [])
           ]]
         },
