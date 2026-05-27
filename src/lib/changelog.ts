@@ -8,6 +8,13 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.4",
+    fecha: "2026-05-26",
+    mejoras: [
+      "El QR configurable de la guía de envío local es más grande y está mejor posicionado verticalmente",
+    ],
+  },
+  {
     version: "1.0.3",
     fecha: "2026-05-26",
     correcciones: [
