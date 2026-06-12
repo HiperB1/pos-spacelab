@@ -474,10 +474,16 @@ export function updateFacturaVenndelo(
     status?: string;
     shipmentCreated?: boolean;
     venndeloLabelLocalPath?: string;
+    /** Flete real de Venndelo: reconcilia costo_envio con lo que realmente se cobrará. */
+    costoEnvio?: number;
+    /** Total reconciliado (subtotal − descuento + flete real de Venndelo). */
+    total?: number;
   }
 ): void {
   const idx = store.facturas.findIndex(f => f.id === facturaId);
   if (idx >= 0) {
+    const costoEnvioValido = typeof data.costoEnvio === 'number' && Number.isFinite(data.costoEnvio) && data.costoEnvio >= 0;
+    const totalValido = typeof data.total === 'number' && Number.isFinite(data.total) && data.total >= 0;
     store.facturas[idx] = {
       ...store.facturas[idx],
       venndelo_order_id: data.venndeloOrderId,
@@ -486,7 +492,9 @@ export function updateFacturaVenndelo(
       venndelo_pin: data.pin ?? store.facturas[idx].venndelo_pin,
       venndelo_status: data.status ?? store.facturas[idx].venndelo_status,
       venndelo_shipment_created: data.shipmentCreated ?? store.facturas[idx].venndelo_shipment_created,
-      venndelo_label_local_path: data.venndeloLabelLocalPath ?? store.facturas[idx].venndelo_label_local_path
+      venndelo_label_local_path: data.venndeloLabelLocalPath ?? store.facturas[idx].venndelo_label_local_path,
+      costo_envio: costoEnvioValido ? data.costoEnvio! : store.facturas[idx].costo_envio,
+      total: totalValido ? data.total! : store.facturas[idx].total
     };
     save();
     console.log('[database] updateFacturaVenndelo: factura actualizada', {

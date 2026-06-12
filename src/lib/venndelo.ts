@@ -443,11 +443,99 @@ export type CreateOrderResult = {
   status?: string;
   pin?: string;
   shipments?: Array<{ id?: string; tracking_number?: string; carrier_code?: string; status?: string }>;
+  /** Flete real calculado por Venndelo al crear el pedido (fuente de verdad para el COD). */
+  shippingTotal?: number;
+  /** Total del pedido según Venndelo (reintegro + flete). */
+  total?: number;
 };
+
+export interface OrderItemInput {
+  descripcion: string;
+  quantidade: number;
+  precio: number;
+  venndelo_id?: string;
+  codigo?: string;
+  peso_kg?: number;
+  alto_cm?: number;
+  ancho_cm?: number;
+  largo_cm?: number;
+}
+
+export interface DescuentoDistribuido {
+  /** Items con unit_price entero ajustado (o los originales si no aplica descuento). */
+  itemsAjustados: OrderItemInput[];
+  /**
+   * Sobrante entero ≥ 0 que NO pudo plegarse dentro de los unit_price. Solo es > 0
+   * en el caso raro de que ningún item tenga cantidad 1 y el residuo sea menor que
+   * toda cantidad (ej. un único item de cantidad 7 con residuo 6). Implica que el COD
+   * queda corto por esos pocos pesos; NO se emite ninguna línea extra para cubrirlo.
+   */
+  ajusteResiduo: number;
+  /** Total que Venndelo debe cobrar (COD): subtotal − descuento. */
+  targetTotal: number;
+  /** Si se aplicó la distribución del descuento. */
+  aplicaDescuento: boolean;
+}
+
+/**
+ * Distribuye el descuento de la factura entre los unit_price de los line items.
+ *
+ * Venndelo recalcula el total del pedido como Σ(unit_price × quantity) y maneja el
+ * precio en pesos ENTEROS (COP, sin centavos). Si se distribuye el descuento dejando
+ * unit_price con decimales, Venndelo los redondea y el COD termina por debajo del total
+ * facturado (discrepancia observada: app 215.000 vs Venndelo 214.600). Por eso cada
+ * unit_price se trunca a entero (Math.floor) y el sobrante de redondeo se PLIEGA dentro
+ * de los unit_price existentes en vez de cargarlo en una línea aparte: una línea extra
+ * (incluso type VIRTUAL) hace que Venndelo marque el pedido como "Datos Incompletos"
+ * porque exige peso/dimensiones para todas las líneas.
+ *
+ * El residuo se absorbe priorizando items de cantidad 1 (un item de cantidad 1 puede
+ * absorber el residuo completo). Solo queda sobrante (`ajusteResiduo` > 0) cuando ningún
+ * item tiene cantidad 1 y el residuo es menor que toda cantidad; ese sobrante (pocos
+ * pesos) se deja sin cobrar. Nunca se sobre-cobra.
+ *
+ * Invariante: Σ(itemsAjustados.precio × quantidade) + ajusteResiduo === targetTotal,
+ * con todos los precios enteros, ajusteResiduo entero ≥ 0, y ajusteResiduo === 0
+ * siempre que exista algún item de cantidad 1.
+ */
+export function distribuirDescuento(items: OrderItemInput[], descuento: number): DescuentoDistribuido {
+  const itemsTotal = items.reduce((sum, i) => sum + i.precio * i.quantidade, 0);
+  const aplicaDescuento = descuento > 0 && itemsTotal > 0 && descuento < itemsTotal;
+  const targetTotal = itemsTotal - (aplicaDescuento ? descuento : 0);
+
+  if (!aplicaDescuento) {
+    return { itemsAjustados: items, ajusteResiduo: 0, targetTotal, aplicaDescuento };
+  }
+
+  const itemsAjustados: OrderItemInput[] = items.map(item => {
+    const lineTotal = item.precio * item.quantidade;
+    const unitPrice = Math.floor((lineTotal / itemsTotal) * targetTotal / item.quantidade);
+    return { ...item, precio: unitPrice };
+  });
+
+  // Residuo entero ≥ 0: los Math.floor nunca hacen superar targetTotal.
+  let residuo = targetTotal - itemsAjustados.reduce((sum, i) => sum + i.precio * i.quantidade, 0);
+
+  // Plegar el residuo dentro de los unit_price priorizando cantidades pequeñas.
+  // Sumar 1 al unit_price de un item aporta `quantidade` al total, así que un item
+  // de cantidad 1 absorbe el residuo completo. Se recorren los items de menor a mayor
+  // cantidad para maximizar lo absorbido sin sobre-cobrar.
+  const ordenPorCantidad = [...itemsAjustados].sort((a, b) => a.quantidade - b.quantidade);
+  for (const item of ordenPorCantidad) {
+    if (residuo <= 0) break;
+    const incremento = Math.floor(residuo / item.quantidade);
+    if (incremento > 0) {
+      item.precio += incremento;
+      residuo -= incremento * item.quantidade;
+    }
+  }
+
+  return { itemsAjustados, ajusteResiduo: residuo, targetTotal, aplicaDescuento };
+}
 
 export async function createOrder(
   factura: Factura,
-  items: { descripcion: string; quantidade: number; precio: number; venndelo_id?: string; codigo?: string; peso_kg?: number; alto_cm?: number; ancho_cm?: number; largo_cm?: number }[],
+  items: OrderItemInput[],
   apiKey: string,
   config: { ciudad_origen: string; empresa_nome: string; empresa_telefono: string; empresa_direccion: string }
 ): Promise<CreateOrderResult | null> {
@@ -458,22 +546,7 @@ export async function createOrder(
   const pickupPhone = config.empresa_telefono || factura.cliente_celular || '3000000000';
   const pickupAddress = config.empresa_direccion || factura.cliente_direccion || 'Dirección no especificada';
 
-  const itemsTotal = items.reduce((sum, i) => sum + i.precio * i.quantidade, 0);
-  const descuento = factura.descuento || 0;
-  const itemsAjustados: typeof items = (() => {
-    if (descuento <= 0 || itemsTotal <= 0 || descuento >= itemsTotal) return items;
-    const targetTotal = itemsTotal - descuento;
-    let asignado = 0;
-    return items.map((item, idx) => {
-      if (idx < items.length - 1) {
-        const newItemTotal = Math.round((item.precio * item.quantidade / itemsTotal) * targetTotal);
-        asignado += newItemTotal;
-        return { ...item, precio: newItemTotal / item.quantidade };
-      } else {
-        return { ...item, precio: (targetTotal - asignado) / item.quantidade };
-      }
-    });
-  })();
+  const { itemsAjustados, targetTotal } = distribuirDescuento(items, factura.descuento || 0);
 
   const body = {
     pickup_info: {
@@ -504,19 +577,25 @@ export async function createOrder(
       postal_code: '',
       phone: factura.cliente_celular || ''
     },
+    // El residuo de redondeo del descuento ya viene plegado dentro de los unit_price
+    // (ver distribuirDescuento). NO se agrega una línea de ajuste aparte: Venndelo
+    // marcaría el pedido como "Datos Incompletos" al exigirle peso/dimensiones.
     line_items: itemsAjustados.map((item, idx) => ({
       ...(item.venndelo_id ? { product_id: item.venndelo_id } : {}),
       sku: item.codigo || `ITEM-${idx + 1}`,
       name: item.descripcion,
       unit_price: item.precio,
       quantity: item.quantidade,
-      weight: item.peso_kg ?? 0.5,
+      // Peso TOTAL de la línea (peso unitario × cantidad). Venndelo calcula el flete
+      // a partir de este peso; debe coincidir con cotizarEnvio() (envio.ts), que también
+      // multiplica por la cantidad. Antes enviaba solo el peso unitario → subcobro.
+      weight: (item.peso_kg ?? 0.5) * item.quantidade,
       weight_unit: 'KG',
       dimensions_unit: 'CM',
       height: item.alto_cm ?? 15,
       width: item.ancho_cm ?? 20,
       length: item.largo_cm ?? 20,
-      type: 'STANDARD'
+      type: 'STANDARD' as const
     })),
     payment_method_code: factura.payment_method_code || 'EXTERNAL_PAYMENT',
     external_order_id: factura.numero
@@ -560,7 +639,37 @@ export async function createOrder(
 
     const hasShipments = Array.isArray(orderData.shipments) && orderData.shipments.length > 0;
     console.log('[venndelo] createOrder éxito:', { id: orderId, status: orderData.status, pin: orderData.pin, hasShipments });
-    return { id: orderId, status: orderData.status, pin: orderData.pin, shipments: orderData.shipments };
+
+    // Diagnóstico de discrepancia COD: comparar el total esperado por la app contra el
+    // que Venndelo almacenó. Si los unit_price devueltos difieren de los enviados,
+    // Venndelo está repreciando desde su catálogo (product_id) en vez de respetarlos.
+    const venndeloSubtotal = orderData.subtotal;
+    if (typeof venndeloSubtotal === 'number' && Math.round(venndeloSubtotal) !== Math.round(targetTotal)) {
+      console.warn('[venndelo] DISCREPANCIA COD:', {
+        targetTotalApp: targetTotal,
+        venndeloSubtotal,
+        venndeloTotal: orderData.total,
+        diferencia: targetTotal - venndeloSubtotal,
+        discounts: orderData.discounts,
+        lineItemsEnviados: body.line_items.map(li => ({ sku: li.sku, unit_price: li.unit_price, quantity: li.quantity })),
+        lineItemsVenndelo: Array.isArray(orderData.line_items)
+          ? orderData.line_items.map((li: any) => ({ sku: li.sku, unit_price: li.unit_price, quantity: li.quantity }))
+          : undefined,
+      });
+    }
+    // Flete y total reales de Venndelo: la app reconcilia la factura con estos valores
+    // para que el total mostrado coincida exactamente con lo que Venndelo cobrará.
+    const shippingTotal = typeof orderData.shipping_total === 'number'
+      ? orderData.shipping_total
+      : (typeof orderData.assumed_shipping_total === 'number' ? orderData.assumed_shipping_total : undefined);
+    return {
+      id: orderId,
+      status: orderData.status,
+      pin: orderData.pin,
+      shipments: orderData.shipments,
+      shippingTotal,
+      total: typeof orderData.total === 'number' ? orderData.total : undefined,
+    };
   } catch (error) {
     // Relanzamos errores de API, atrapamos solo errores de red
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
