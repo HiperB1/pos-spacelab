@@ -68,7 +68,53 @@ export async function initDatabase(): Promise<void> {
 }
 
 function save() {
+  try {
+    localStorage.setItem('dg_facturacion_db', JSON.stringify(store));
+  } catch (e) {
+    // Fallo de persistencia (cuota excedida / almacenamiento no disponible).
+    // Antes se ignoraba en silencio: el usuario seguía operando creyendo que
+    // sus datos quedaban guardados. Lo registramos y notificamos a la UI.
+    console.error('[database] Error al guardar en localStorage:', e);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('db-save-error', { detail: e }));
+    }
+  }
+}
+
+/**
+ * Snapshot profundo del store completo (todas las colecciones) para backup.
+ * A diferencia de getFacturas(), NO embebe items: el blob refleja el store tal
+ * cual se persiste, garantizando un round-trip sin pérdida.
+ */
+export function exportRawStore(): DataStore {
+  return JSON.parse(JSON.stringify(store));
+}
+
+/**
+ * Reemplaza el store completo desde un backup y lo persiste. Hace merge con
+ * defaultData (incluida configuracion en profundidad) para tolerar backups de
+ * versiones anteriores a las que les falten colecciones o campos nuevos.
+ * Descarta cualquier `items` embebido en facturas: getFacturas los re-deriva
+ * de factura_items, y persistirlos duplicaría datos.
+ */
+export function replaceStore(data: Partial<DataStore>): void {
+  const merged: DataStore = {
+    ...JSON.parse(JSON.stringify(defaultData)),
+    ...data,
+    configuracion: { ...defaultData.configuracion, ...(data.configuracion || {}) },
+  };
+  if (Array.isArray(merged.facturas)) {
+    merged.facturas = merged.facturas.map((f: any) => {
+      if (f && typeof f === 'object' && 'items' in f) {
+        const { items, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+  }
+  store = merged;
   localStorage.setItem('dg_facturacion_db', JSON.stringify(store));
+  initialized = true;
 }
 
 export function getConfiguracion(): Configuracion {
@@ -457,6 +503,13 @@ export function updateFacturaVenndelo(
 export function anularFactura(id: string, motivo: string): void {
   const idx = store.facturas.findIndex(f => f.id === id);
   if (idx >= 0) {
+    // Guarda anti doble-anulación: revertir el stock dos veces inflaría el
+    // inventario en silencio. La UI ya oculta el botón, pero esto protege la
+    // capa de datos ante llamadas repetidas.
+    if (store.facturas[idx].estado === 'anulada') {
+      console.warn('[database] anularFactura: factura ya anulada, se ignora', { id });
+      return;
+    }
     const items = store.factura_items.filter(i => i.factura_id === id);
     
     for (const item of items) {

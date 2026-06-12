@@ -101,6 +101,20 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Notifica fallos de persistencia que antes ocurrían en silencio (cuota de
+  // localStorage llena / almacenamiento no disponible). Sin esto el usuario
+  // seguiría operando creyendo que sus cambios se guardan.
+  useEffect(() => {
+    const handleSaveError = () => {
+      toast.error(
+        'No se pudieron guardar los cambios: almacenamiento lleno o no disponible. Exporte un backup y libere espacio.',
+        { duration: 10000 }
+      );
+    };
+    window.addEventListener('db-save-error', handleSaveError);
+    return () => window.removeEventListener('db-save-error', handleSaveError);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#0a0a1a] text-white">
