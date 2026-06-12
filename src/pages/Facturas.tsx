@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
 import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
-import { getCiudades, createOrder, createShipment, generateLabel, getOrder, cancelOrder, type CreateOrderResult } from '../lib/venndelo';
+import { getCiudades, createOrder, createShipment, generateLabel, getOrder, cancelOrder, distribuirDescuento, type CreateOrderResult } from '../lib/venndelo';
 import { cotizarEnvioSimple, type ItemEnvio } from '../lib/envio';
 import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
@@ -58,45 +58,6 @@ interface Factura {
   payment_method_code?: string;
 }
 
-const BARRIOS_MEDELLIN = [
-  'Aguacatala', 'Alejandría', 'Alfonso López', 'Altavista', 'Andalucía',
-  'Aranjuez', 'Arrabal', 'Ayurá', 'Barrio Colón', 'Barrio Cristóbal',
-  'Belén', 'Berlín', 'Bello Oriente', 'Bomboná N°1', 'Bomboná N°2',
-  'Boston', 'Boyacá', 'Brasilia', 'Buenos Aires', 'Calasanz',
-  'Calasanz Parte Alta', 'Campo Amor', 'Campo Valdés N°1', 'Campo Valdés N°2',
-  'Carpinelo', 'Castilla', 'Centro', 'Colombia', 'Conquistadores',
-  'Córdoba', 'Cristo Rey', 'Cuarta Brigada', 'Diego Echavarría',
-  'El Compromiso', 'El Corazón', 'El Diamante N°2', 'El Pinar', 'El Poblado',
-  'El Pomar', 'El Raizal', 'El Salvador', 'El Triunfo', 'El Velódromo',
-  'El Volador', 'Estadio', 'Exposiciones', 'Ferrini', 'Florencia',
-  'Florida Nueva', 'Francisco Antonio Zea', 'Francia', 'Frontera', 'Gerona',
-  'Girardot', 'Granada', 'Granizal', 'Guayabal', 'Guayaquil',
-  'Héctor Abad Gómez', 'Ignacio Vélez Escallón', 'Isla del Encanto',
-  'Juan XXIII - La Quiebra', 'Kennedy', 'La América', 'La Avanzada',
-  'La Candelaria', 'La Cruz', 'La Esperanza', 'La Esperanza N°2',
-  'La Florida', 'La Francia', 'La Frontera', 'La Gloria', 'La Isla',
-  'La Ladera', 'La Loma de Los Bernal', 'La Mota', 'La Palma',
-  'La Piñuela', 'La Rosa', 'La Salle', 'La Sierra', 'La Toma',
-  'La Unión', 'Las Brisas', 'Las Esmeraldas', 'Las Granjas',
-  'Las Independencias', 'Las Violetas', 'Laureles', 'Liceo', 'Loreto',
-  'Los Alcázares', 'Los Balsos N°1', 'Los Balsos N°2', 'Los Colores',
-  'Los Mangos', 'Lusitania', 'Manrique Central N°1', 'Manrique Central N°2',
-  'Manrique Oriental', 'Miramar', 'Moravia', 'Moscú N°1', 'Moscú N°2',
-  'Naranjal', 'Nuevos Conquistadores', 'Oriente', 'Pablo VI', 'Palermo',
-  'Patio Bonito', 'Pedregal', 'Perpetuo Socorro', 'Pie de La Popa',
-  'Pío XII', 'Popular', 'Quinta Linda', 'Robledo', 'Romélia', 'Rosales',
-  'San Antonio de Prado', 'San Cristóbal', 'San Diego', 'San Francisco',
-  'San Germán', 'San Isidro', 'San Javier N°1', 'San Javier N°2',
-  'San José La Cima N°1', 'San José La Cima N°2', 'San Luís',
-  'San Martín de Porres', 'San Miguel', 'San Pablo', 'San Pedro',
-  'Santa Cruz', 'Santa Elena', 'Santa Lucía', 'Santa María de Los Ángeles',
-  'Santa Mónica', 'Santo Domingo Savio N°1', 'Santo Domingo Savio N°2',
-  'Sevilla', 'Simón Bolívar', 'Socorro', 'Sucre', 'Suramericana',
-  'Tejelo', 'Toscana', 'Tricentenario', 'Trinidad', 'Universitario',
-  'Vallejuelos', 'Versalles N°1', 'Versalles N°2', 'Villa Carlota',
-  'Villa de Guadalupe', 'Villa del Socorro', 'Villa Hermosa', 'Villa Niquía',
-  'Villahermosa', 'Zamora',
-];
 
 function interpretarErrorVenndelo(errMsg: string): { causa: string; solucion: string } {
   const msg = errMsg.toLowerCase();
@@ -352,6 +313,22 @@ export function Facturas() {
     setItems(newItems);
   }
 
+  // El flete de Venndelo depende del valor declarado (unit_price). Como createOrder
+  // envía los precios YA descontados, la cotización debe usar esos mismos precios
+  // descontados; si no, el envío mostrado al crear la factura no coincide con el real.
+  function itemsParaCotizar(validos: typeof items): ItemEnvio[] {
+    const orderItems = validos.map(i => ({
+      descripcion: i.descripcion,
+      quantidade: i.quantidade,
+      precio: i.precio,
+      peso_kg: i.peso_kg,
+      alto_cm: i.alto_cm,
+      ancho_cm: i.ancho_cm,
+      largo_cm: i.largo_cm,
+    }));
+    return distribuirDescuento(orderItems, descuento || 0).itemsAjustados as ItemEnvio[];
+  }
+
   async function handleCotizarEnvio() {
     const itemsValidos = items.filter(i => i.descripcion && i.quantidade > 0 && i.precio > 0);
     if (itemsValidos.length === 0) {
@@ -370,7 +347,7 @@ export function Facturas() {
       const subtotalActual = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
       const precio = await cotizarEnvioSimple(
         ciudadDestino,
-        itemsValidos as ItemEnvio[],
+        itemsParaCotizar(itemsValidos),
         ciudad?.subdivision_code,
         paymentMethod,
         subtotalActual
@@ -424,7 +401,7 @@ export function Facturas() {
             const subtotalActual = validItems.reduce((sum, i) => sum + i.quantidade * i.precio, 0);
             costoEnvioFinal = await cotizarEnvioSimple(
               ciudadDestino,
-              itemsConPrecio as ItemEnvio[],
+              itemsParaCotizar(itemsConPrecio),
               ciudadObj?.subdivision_code,
               paymentMethod,
               subtotalActual
@@ -595,6 +572,13 @@ export function Facturas() {
                 }
               }
 
+              // Reconciliar el flete con el valor real que cobrará Venndelo: la cotización
+              // previa (factura.costo_envio) puede diferir unos pesos del flete de creación.
+              // Se adopta el de Venndelo para que el total de la factura coincida con el COD.
+              const reconcilia = typeof order.shippingTotal === 'number' && Number.isFinite(order.shippingTotal) && order.shippingTotal >= 0;
+              const costoEnvioReal = reconcilia ? order.shippingTotal! : (f.costo_envio ?? 0);
+              const totalReal = reconcilia ? (f.subtotal - (f.descuento || 0) + costoEnvioReal) : (f.total ?? 0);
+
               updateFacturaVenndelo(f.id, {
                 venndeloOrderId: order.id,
                 tracking,
@@ -602,12 +586,15 @@ export function Facturas() {
                 pin: order.pin,
                 status: order.status,
                 shipmentCreated,
-                venndeloLabelLocalPath: localPath || undefined
+                venndeloLabelLocalPath: localPath || undefined,
+                ...(reconcilia ? { costoEnvio: costoEnvioReal, total: totalReal } : {})
               });
 
             setVenndeloResult({
               factura: {
                 ...f,
+                costo_envio: costoEnvioReal,
+                total: totalReal,
                 venndelo_order_id: order.id,
                 venndelo_tracking: tracking,
                 venndelo_label_url: labelUrl,
@@ -1061,14 +1048,11 @@ export function Facturas() {
               </div>
             </div>
             {tipoPedido === 'local' && (
-              <Select
+              <Input
                 label="Barrio"
                 value={barrioMedellin}
                 onChange={e => setBarrioMedellin(e.target.value)}
-                options={[
-                  { value: '', label: 'Seleccionar barrio...' },
-                  ...BARRIOS_MEDELLIN.map(b => ({ value: b, label: b }))
-                ]}
+                placeholder="Escribe el barrio..."
               />
             )}
           </div>
@@ -1322,7 +1306,12 @@ export function Facturas() {
                   <input
                     type="number"
                     value={descuento}
-                    onChange={e => setDescuento(parseFloat(e.target.value) || 0)}
+                    onChange={e => {
+                      setDescuento(parseFloat(e.target.value) || 0);
+                      // El descuento cambia el valor declarado y por tanto el flete:
+                      // invalidar la cotización para que se recalcule (queda en gris).
+                      if (tipoPedido === 'nacional') setEnvioCalculado(false);
+                    }}
                     className="w-full pl-6 pr-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-primary/50 outline-none transition-colors"
                   />
                 </div>
