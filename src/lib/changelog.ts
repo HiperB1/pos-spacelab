@@ -8,6 +8,14 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.5",
+    fecha: "2026-06-17",
+    correcciones: [
+      "Los pedidos nacionales con descuento ahora cuadran correctamente el COD, el flete y el total",
+      "El respaldo de datos guarda el store completo, evitando la pérdida silenciosa de colecciones al exportar/importar",
+    ],
+  },
+  {
     version: "1.0.4",
     fecha: "2026-05-26",
     mejoras: [
