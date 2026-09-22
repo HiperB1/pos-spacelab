@@ -100,6 +100,9 @@ export interface Factura {
   descuento: number;
   costo_envio?: number;
   total: number;           // subtotal - descuento + costo_envio
+  /** Envío que el cliente pagó por adelantado (solo contra entrega). No altera `total`:
+   *  lo que cobra el transportador es saldoContraEntrega(total, anticipo_envio). */
+  anticipo_envio?: number;
   estado: string;          // 'activa' | 'anulada'
   notas?: string;
   motivo_anulacion?: string;

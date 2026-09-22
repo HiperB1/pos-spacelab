@@ -110,7 +110,7 @@ export async function exportContabilidadDetallada(
   const facturaHeaders = [
     '# Factura', 'Fecha', 'Cliente', 'NIT / ID', 'Teléfono',
     'Tipo Pedido', 'Método Pago', 'Estado', 'Pagada',
-    'Subtotal', 'Descuento', 'Costo Envío', 'TOTAL',
+    'Subtotal', 'Descuento', 'Costo Envío', 'TOTAL', 'Anticipo Envío',
     'Productos', 'N° Ítems', 'Ciudad Destino', 'Notas',
   ];
 
@@ -132,6 +132,7 @@ export async function exportContabilidadDetallada(
     f.descuento || 0,
     f.costo_envio || 0,
     f.total,
+    f.anticipo_envio || 0,
     f.items.map(i => `${i.descripcion} x${i.quantidade}`).join(' | '),
     f.items.length,
     f.ciudad_destino || '',
@@ -144,6 +145,7 @@ export async function exportContabilidadDetallada(
     sorted.reduce((s, f) => s + (f.descuento || 0), 0),
     sorted.reduce((s, f) => s + (f.costo_envio || 0), 0),
     sorted.reduce((s, f) => s + f.total, 0),
+    sorted.reduce((s, f) => s + (f.anticipo_envio || 0), 0),
     '',
     sorted.reduce((s, f) => s + f.items.length, 0),
     '', '',
@@ -154,10 +156,10 @@ export async function exportContabilidadDetallada(
   ws2['!cols'] = [
     { wch: 12 }, { wch: 12 }, { wch: 26 }, { wch: 16 }, { wch: 14 },
     { wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 8 },
-    { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 },
+    { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
     { wch: 50 }, { wch: 10 }, { wch: 20 }, { wch: 35 },
   ];
-  applyCurrencyFormat(ws2, ws2Data, [9, 10, 11, 12]);
+  applyCurrencyFormat(ws2, ws2Data, [9, 10, 11, 12, 13]);
 
   // ─── HOJA 3: Ítems por Factura ─────────────────────────────────────────
   const itemHeaders = [

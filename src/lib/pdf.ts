@@ -1,6 +1,7 @@
 import pdfMake from 'pdfmake/build/pdfmake';
 import type { Factura, FacturaItem } from './types';
 import * as db from './database';
+import { saldoContraEntrega } from './venndelo';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
@@ -218,7 +219,7 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
               ...(factura.descuento > 0 ? [{
                 columns: [
                   { text: 'DESCUENTO', style: 'totalLabel' },
-                  { text: formatCurrency(factura.descuento), style: 'totalValue' }
+                  { text: '-' + formatCurrency(factura.descuento), style: 'totalValue' }
                 ],
                 margin: [0, 0, 0, m(3)]
               }] : []),
@@ -229,11 +230,28 @@ export async function gerarPDFFactura(factura: Factura & { items: FacturaItem[] 
                 ],
                 margin: [0, 0, 0, m(3)]
               }] : []),
+              ...((factura.anticipo_envio ?? 0) > 0 ? [
+                { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
+                {
+                  columns: [
+                    { text: 'TOTAL', style: 'totalLabel' },
+                    { text: formatCurrency(factura.total), style: 'totalValue' }
+                  ],
+                  margin: [0, m(3), 0, m(3)]
+                },
+                {
+                  columns: [
+                    { text: 'ANTICIPO ENVÍO', style: 'totalLabel' },
+                    { text: '-' + formatCurrency(factura.anticipo_envio!), style: 'totalValue' }
+                  ],
+                  margin: [0, 0, 0, m(3)]
+                }
+              ] : []),
               { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 130, y2: 0, lineWidth: 1, strokeColor: '#333' }] },
               {
                 columns: [
-                  { text: 'TOTAL A PAGAR', style: 'totalLabelBold' },
-                  { text: formatCurrency(factura.total), style: 'totalValueBold' }
+                  { text: (factura.anticipo_envio ?? 0) > 0 ? 'SALDO CONTRA ENTREGA' : 'TOTAL A PAGAR', style: 'totalLabelBold' },
+                  { text: formatCurrency(saldoContraEntrega(factura.total, factura.anticipo_envio)), style: 'totalValueBold' }
                 ],
                 margin: [0, m(4), 0, 0]
               }

@@ -1,4 +1,5 @@
 import { getConfiguracion } from './database';
+import { resolverOrigenVenndelo, tipoLineaVenndelo } from './venndelo';
 import type { Cotizacion } from './types';
 
 const VENNDELO_API_BASE = 'https://api.venndelo.com/v1/admin';
@@ -250,6 +251,7 @@ export interface ItemEnvio {
   alto_cm?: number;
   ancho_cm?: number;
   largo_cm?: number;
+  venndelo_variation_id?: string;
 }
 
 export async function cotizarEnvio(
@@ -266,7 +268,7 @@ export async function cotizarEnvio(
     throw new Error('API key de Venndelo no configurada');
   }
 
-  const ciudadOrigen = config.ciudad_origen || '11001000';
+  const origen = await resolverOrigenVenndelo(config.ciudad_origen, apiKey);
   const pesoDefault = config.peso_default_kg || 0.5;
   const altoDefault = config.alto_default_cm || 15;
   const anchoDefault = config.ancho_default_cm || 20;
@@ -281,7 +283,8 @@ export async function cotizarEnvio(
       },
       body: JSON.stringify({
         pickup_info: {
-          city_code: ciudadOrigen,
+          city_code: origen.city_code,
+          subdivision_code: origen.subdivision_code,
           country_code: 'CO'
         },
         shipping_info: {
@@ -300,7 +303,8 @@ export async function cotizarEnvio(
           weight: (item.peso_kg ?? pesoDefault) * item.quantidade,
           weight_unit: 'KG',
           quantity: item.quantidade,
-          type: 'STANDARD'
+          free_shipping: false,
+          ...tipoLineaVenndelo(item.venndelo_variation_id)
         })),
         payment_method_code: paymentMethodCode
       })

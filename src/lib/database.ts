@@ -399,6 +399,7 @@ export function createFactura(data: any): any {
   const costoEnvio = data.costo_envio || 0;
   const iva = 0; // IVA no aplica en MySpace — el campo existe por compatibilidad
   const total = subtotal - descuento + costoEnvio;
+  const anticipoEnvio = Number.isFinite(data.anticipo_envio) && data.anticipo_envio > 0 ? data.anticipo_envio : 0;
   
   const factura: Factura = {
     id,
@@ -418,6 +419,7 @@ export function createFactura(data: any): any {
     descuento,
     costo_envio: costoEnvio,
     total,
+    ...(anticipoEnvio > 0 ? { anticipo_envio: anticipoEnvio } : {}),
     estado: 'activa',
     notas: data.notas || '',
     tipo_pedido: data.tipo_pedido || 'local',
@@ -506,6 +508,22 @@ export function updateFacturaVenndelo(
   } else {
     console.warn('[database] updateFacturaVenndelo: factura NO encontrada', { facturaId });
   }
+}
+
+/**
+ * Quita el vínculo con un pedido Venndelo (p. ej. una factura activa quedó ligada a un
+ * pedido cancelado ajeno) para poder crearle uno nuevo.
+ */
+export function desvincularPedidoVenndelo(facturaId: string): void {
+  const idx = store.facturas.findIndex(f => f.id === facturaId);
+  if (idx < 0) return;
+  const {
+    venndelo_order_id, venndelo_tracking, venndelo_label_url, venndelo_pin,
+    venndelo_status, venndelo_shipment_created, venndelo_label_local_path, ...resto
+  } = store.facturas[idx];
+  console.log('[database] desvincularPedidoVenndelo', { facturaId, venndelo_order_id });
+  store.facturas[idx] = resto;
+  save();
 }
 
 export function anularFactura(id: string, motivo: string): void {

@@ -41,6 +41,9 @@ export interface CiudadVenndelo {
   country_code?: string;
   subdivision_code?: string;
   subdivision_name?: string;
+  /** 'ACTIVE' o 'SUSPENDED' (Venndelo rechaza envíos desde/hacia ciudades suspendidas). */
+  service_status?: string;
+  service_unavailable_message?: string;
 }
 
 function getApiKey(): string | undefined {
@@ -351,6 +354,57 @@ export async function updateVariacionVenndelo(
   }
 }
 
+const CIUDADES_CACHE_MS = 60 * 60 * 1000;
+let ciudadesCache: { at: number; data: CiudadVenndelo[] } | null = null;
+
+/**
+ * Lista completa de ciudades de Venndelo (~9.600, paginada). Lanza error si la API
+ * falla: a diferencia de getCiudades(), NO usa la tabla fallback, para poder validar
+ * códigos contra la lista real. Se cachea en memoria 1 h.
+ */
+export async function fetchCiudadesVenndelo(apiKey: string): Promise<CiudadVenndelo[]> {
+  if (ciudadesCache && Date.now() - ciudadesCache.at < CIUDADES_CACHE_MS) return ciudadesCache.data;
+
+  const allCities: CiudadVenndelo[] = [];
+  let pageToken = '';
+  do {
+    const url = `${VENNDELO_API_BASE}/region/cities?page_size=500${pageToken ? `&page_token=${pageToken}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-Venndelo-Api-Key': apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error obteniendo ciudades de Venndelo: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const items: any[] = data.items || [];
+
+    for (const c of items) {
+      allCities.push({
+        code: String(c.code),
+        name: c.name,
+        department: c.subdivision_name || c.subdivision_code || '',
+        country_code: c.country_code,
+        subdivision_code: c.subdivision_code,
+        subdivision_name: c.subdivision_name,
+        service_status: c.service_status,
+        service_unavailable_message: c.service_unavailable_message
+      });
+    }
+
+    pageToken = data.next_page_token || '';
+  } while (pageToken);
+
+  const ordenadas = allCities.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  ciudadesCache = { at: Date.now(), data: ordenadas };
+  return ordenadas;
+}
+
 export async function getCiudades(): Promise<CiudadVenndelo[]> {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -358,43 +412,8 @@ export async function getCiudades(): Promise<CiudadVenndelo[]> {
     return getCiudadesFallback();
   }
 
-  const allCities: CiudadVenndelo[] = [];
-  let pageToken = '';
-
   try {
-    do {
-      const url = `${VENNDELO_API_BASE}/region/cities?page_size=500${pageToken ? `&page_token=${pageToken}` : ''}`;
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-Venndelo-Api-Key': apiKey,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        console.error('[venndelo] getCiudades error:', response.status);
-        return getCiudadesFallback();
-      }
-
-      const data = await response.json();
-      const items: any[] = data.items || [];
-
-      for (const c of items) {
-        allCities.push({
-          code: String(c.code),
-          name: c.name,
-          department: c.subdivision_name || c.subdivision_code || '',
-          country_code: c.country_code,
-          subdivision_code: c.subdivision_code,
-          subdivision_name: c.subdivision_name
-        });
-      }
-
-      pageToken = data.next_page_token || '';
-    } while (pageToken);
-
-    return allCities.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return await fetchCiudadesVenndelo(apiKey);
   } catch (error) {
     console.error('[venndelo] getCiudades error:', error);
     return getCiudadesFallback();
@@ -447,6 +466,10 @@ export type CreateOrderResult = {
   shippingTotal?: number;
   /** Total del pedido según Venndelo (reintegro + flete). */
   total?: number;
+  /** Descuento total que Venndelo registró (anticipo de envío). */
+  totalDiscount?: number;
+  /** false si se envió un anticipo y Venndelo no lo aplicó: cobraría de más en la puerta. */
+  anticipoAplicado?: boolean;
 };
 
 export interface OrderItemInput {
@@ -454,6 +477,7 @@ export interface OrderItemInput {
   quantidade: number;
   precio: number;
   venndelo_id?: string;
+  venndelo_variation_id?: string;
   codigo?: string;
   peso_kg?: number;
   alto_cm?: number;
@@ -533,12 +557,134 @@ export function distribuirDescuento(items: OrderItemInput[], descuento: number):
   return { itemsAjustados, ajusteResiduo: residuo, targetTotal, aplicaDescuento };
 }
 
+/**
+ * Normaliza un código DANE de ciudad al formato de 8 dígitos que acepta Venndelo.
+ * Tolera espacios, puntos y guiones, y acepta 4, 5, 7 u 8 dígitos (con 4 o 7 se asume
+ * que se perdió el 0 inicial). Retorna null si está vacío o no es un código válido.
+ */
+export function normalizarCodigoDane(input: string | undefined | null): string | null {
+  if (input == null) return null;
+  const limpio = input.trim().replace(/[\s.-]/g, '');
+  if (!/^\d+$/.test(limpio)) return null;
+  // Se recupera el 0 inicial perdido (ej. 5001 → 05001, típico al copiar desde Excel)
+  const conCero = limpio.length === 4 || limpio.length === 7 ? `0${limpio}` : limpio;
+  // Venndelo rellena con ceros a la IZQUIERDA los códigos de 5 dígitos (05001 → 00005001)
+  // y responde 404 "ciudad no encontrada". Se expande al DANE de 8 dígitos (cabecera
+  // municipal = municipio + '000'), el mismo formato que devuelve /region/cities.
+  if (conCero.length === 5) return `${conCero}000`;
+  if (conCero.length === 8) return conCero;
+  return null;
+}
+
+/**
+ * Campos de tipo de línea para Venndelo. Los productos STANDARD exigen variation_id
+ * (sin él responde 422 "Se requiere variation_id para productos de tipo STANDARD");
+ * los ítems sin variación sincronizada (manuales, combos) se envían como VIRTUAL.
+ */
+export function tipoLineaVenndelo(variationId?: string | number | null):
+  { type: 'STANDARD'; variation_id: number } | { type: 'VIRTUAL' } {
+  const id = Number(variationId);
+  return variationId != null && variationId !== '' && Number.isInteger(id) && id > 0
+    ? { type: 'STANDARD', variation_id: id }
+    : { type: 'VIRTUAL' };
+}
+
+/** Código DANE del departamento: los 2 primeros dígitos del código de ciudad. */
+export function subdivisionDeDane(code: string): string {
+  return code.substring(0, 2);
+}
+
+export const ERROR_CIUDAD_ORIGEN = 'Configura una ciudad origen (código DANE) válida en Configuración';
+
+/**
+ * Resuelve el origen de los envíos (pedidos y cotizaciones) a partir de
+ * configuracion.ciudad_origen. Lanza error si no está configurado o es inválido:
+ * no se usa ninguna ciudad por defecto para no enviar un origen equivocado.
+ */
+export function resolverCiudadOrigen(ciudadOrigen: string | undefined | null): { city_code: string; subdivision_code: string } {
+  const codigo = normalizarCodigoDane(ciudadOrigen);
+  if (!codigo) throw new Error(ERROR_CIUDAD_ORIGEN);
+  return { city_code: codigo, subdivision_code: subdivisionDeDane(codigo) };
+}
+
+export type ValidacionOrigen =
+  | { estado: 'ok'; ciudad: CiudadVenndelo }
+  | { estado: 'suspendida'; ciudad: CiudadVenndelo; mensaje: string }
+  | { estado: 'no_existe'; mensaje: string };
+
+/**
+ * Verifica un código DANE ya normalizado (8 dígitos) contra la lista real de ciudades
+ * de Venndelo. Un código con formato válido puede no existir (typo, o municipios sin
+ * cabecera "000" como 25653 San Cayetano) o estar suspendido temporalmente.
+ */
+export function validarOrigenEnCiudades(codigo: string, ciudades: CiudadVenndelo[]): ValidacionOrigen {
+  const ciudad = ciudades.find(c => c.code === codigo);
+  if (!ciudad) {
+    return {
+      estado: 'no_existe',
+      mensaje: `La ciudad origen con código DANE ${codigo} no existe en Venndelo. Corrige el código en Configuración (usa el de 8 dígitos exacto si tu municipio no tiene cabecera "000").`
+    };
+  }
+  if (ciudad.service_status && ciudad.service_status !== 'ACTIVE') {
+    return {
+      estado: 'suspendida',
+      ciudad,
+      mensaje: `La ciudad origen ${ciudad.name} está suspendida en Venndelo${ciudad.service_unavailable_message ? `: ${ciudad.service_unavailable_message}` : '.'}`
+    };
+  }
+  return { estado: 'ok', ciudad };
+}
+
+/**
+ * Resuelve el origen validándolo contra la lista real de Venndelo y toma de ella el
+ * subdivision_code (p. ej. Bogotá 11001000 es departamento '25' en Venndelo, no '11').
+ * Si la lista no se puede descargar, sigue solo con la validación de formato: Venndelo
+ * rechazará el pedido si el código no existe, pero no se bloquea por una caída de la API.
+ */
+export async function resolverOrigenVenndelo(
+  ciudadOrigen: string | undefined | null,
+  apiKey: string
+): Promise<{ city_code: string; subdivision_code: string }> {
+  const origen = resolverCiudadOrigen(ciudadOrigen);
+  let ciudades: CiudadVenndelo[];
+  try {
+    ciudades = await fetchCiudadesVenndelo(apiKey);
+  } catch (error) {
+    console.warn('[venndelo] No se pudo validar la ciudad origen contra Venndelo:', error);
+    return origen;
+  }
+  const validacion = validarOrigenEnCiudades(origen.city_code, ciudades);
+  if (validacion.estado !== 'ok') throw new Error(validacion.mensaje);
+  return {
+    city_code: validacion.ciudad.code,
+    subdivision_code: validacion.ciudad.subdivision_code || origen.subdivision_code
+  };
+}
+
+/**
+ * Anticipo de envío como descuento GLOBAL del pedido. Se envía aparte de los line_items
+ * para NO bajar el precio del producto: si se plegara en los unit_price (como el
+ * descuento manual), bajaría el valor declarado/asegurado y la comisión COD.
+ * Venndelo maneja pesos enteros, por eso se redondea.
+ */
+export function descuentosVenndelo(anticipo: number | undefined | null): { type: 'GLOBAL'; amount: number }[] {
+  const monto = Math.round(Number(anticipo) || 0);
+  return monto > 0 ? [{ type: 'GLOBAL', amount: monto }] : [];
+}
+
+/** Lo que el transportador cobra en la puerta: total de la factura menos el anticipo. Nunca negativo. */
+export function saldoContraEntrega(total: number, anticipo: number | undefined | null): number {
+  return Math.max(0, total - (Number(anticipo) || 0));
+}
+
 export async function createOrder(
   factura: Factura,
   items: OrderItemInput[],
   apiKey: string,
-  config: { ciudad_origen: string; empresa_nome: string; empresa_telefono: string; empresa_direccion: string }
+  config: { ciudad_origen: string; empresa_nome: string; empresa_telefono: string; empresa_direccion: string },
+  anticipoEnvio: number = 0
 ): Promise<CreateOrderResult | null> {
+  const origen = await resolverOrigenVenndelo(config.ciudad_origen, apiKey);
   const ciudades = await getCiudades();
   const ciudadDestino = ciudades.find(c => c.code === factura.ciudad_destino);
 
@@ -553,8 +699,8 @@ export async function createOrder(
       contact_name: config.empresa_nome || 'Tienda',
       contact_phone: pickupPhone,
       address_1: pickupAddress,
-      city_code: config.ciudad_origen || '11001000',
-      subdivision_code: '',
+      city_code: origen.city_code,
+      subdivision_code: origen.subdivision_code,
       country_code: 'CO',
       postal_code: ''
     },
@@ -595,10 +741,12 @@ export async function createOrder(
       height: item.alto_cm ?? 15,
       width: item.ancho_cm ?? 20,
       length: item.largo_cm ?? 20,
-      type: 'STANDARD' as const
+      ...tipoLineaVenndelo(item.venndelo_variation_id)
     })),
     payment_method_code: factura.payment_method_code || 'EXTERNAL_PAYMENT',
-    external_order_id: factura.numero
+    external_order_id: factura.numero,
+    // Solo en contra entrega: con EXTERNAL_PAYMENT no hay cobro en la puerta del que descontar
+    discounts: factura.payment_method_code === 'COD' ? descuentosVenndelo(anticipoEnvio) : []
   };
 
   try {
@@ -659,6 +807,29 @@ export async function createOrder(
     }
     // Flete y total reales de Venndelo: la app reconcilia la factura con estos valores
     // para que el total mostrado coincida exactamente con lo que Venndelo cobrará.
+    // El campo `discounts` se empezó a usar con el anticipo de envío: verificar que Venndelo
+    // lo aplicó. Si no, cobraría en la puerta el anticipo que el cliente ya pagó.
+    const anticipoEnviado = body.discounts.reduce((s, d) => s + d.amount, 0);
+    const totalDiscount = typeof orderData.total_discount === 'number' ? orderData.total_discount : undefined;
+    let anticipoAplicado: boolean | undefined;
+    if (anticipoEnviado > 0) {
+      const totalEsperado = typeof orderData.subtotal === 'number' && typeof orderData.shipping_total === 'number'
+        ? orderData.subtotal + orderData.shipping_total - anticipoEnviado
+        : undefined;
+      anticipoAplicado = Math.round(totalDiscount ?? 0) === anticipoEnviado &&
+        (totalEsperado === undefined || typeof orderData.total !== 'number' || Math.abs(orderData.total - totalEsperado) < 1);
+      if (!anticipoAplicado) {
+        console.warn('[venndelo] ANTICIPO NO APLICADO:', {
+          anticipoEnviado,
+          totalDiscount,
+          discounts: orderData.discounts,
+          subtotal: orderData.subtotal,
+          shippingTotal: orderData.shipping_total,
+          total: orderData.total,
+          totalEsperado,
+        });
+      }
+    }
     const shippingTotal = typeof orderData.shipping_total === 'number'
       ? orderData.shipping_total
       : (typeof orderData.assumed_shipping_total === 'number' ? orderData.assumed_shipping_total : undefined);
@@ -669,6 +840,8 @@ export async function createOrder(
       shipments: orderData.shipments,
       shippingTotal,
       total: typeof orderData.total === 'number' ? orderData.total : undefined,
+      totalDiscount,
+      anticipoAplicado,
     };
   } catch (error) {
     // Relanzamos errores de API, atrapamos solo errores de red

@@ -42,6 +42,7 @@ interface ItemCotizacion {
   origen: 'produto' | 'combo';
   produto_id?: string;
   combo_id?: string;
+  venndelo_variation_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -161,6 +162,7 @@ export function Cotizaciones() {
     newItems[index].origen = tipo === 'inventario' ? (origen || 'produto') : 'produto';
     newItems[index].produto_id = undefined;
     newItems[index].combo_id = undefined;
+    newItems[index].venndelo_variation_id = undefined;
     newItems[index].descripcion = '';
     newItems[index].precio = 0;
 
@@ -175,6 +177,7 @@ export function Cotizaciones() {
         newItems[index].produto_id = id;
         newItems[index].descripcion = prod?.nome || '';
         newItems[index].precio = prod?.preco || 0;
+        newItems[index].venndelo_variation_id = prod?.venndelo_variation_id;
         newItems[index].peso_kg = prod?.peso_kg;
         newItems[index].alto_cm = prod?.alto_cm;
         newItems[index].ancho_cm = prod?.ancho_cm;

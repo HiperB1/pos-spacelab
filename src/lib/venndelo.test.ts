@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { distribuirDescuento, type OrderItemInput } from './venndelo';
+import {
+  distribuirDescuento,
+  normalizarCodigoDane,
+  subdivisionDeDane,
+  resolverCiudadOrigen,
+  tipoLineaVenndelo,
+  validarOrigenEnCiudades,
+  descuentosVenndelo,
+  saldoContraEntrega,
+  type CiudadVenndelo,
+  ERROR_CIUDAD_ORIGEN,
+  type OrderItemInput,
+} from './venndelo';
 
 // Total COD que Venndelo cobrará = Σ(unit_price × quantity). El residuo ya viene
 // plegado dentro de los unit_price (no hay línea de ajuste aparte).
@@ -152,5 +164,157 @@ describe('distribuirDescuento', () => {
         if (r.aplicaDescuento) expect(r.targetTotal).toBe(subtotal - descuento);
       }
     });
+  });
+});
+
+describe('normalizarCodigoDane', () => {
+  it('retorna null si está vacío o no definido', () => {
+    expect(normalizarCodigoDane('')).toBeNull();
+    expect(normalizarCodigoDane('   ')).toBeNull();
+    expect(normalizarCodigoDane(undefined)).toBeNull();
+    expect(normalizarCodigoDane(null)).toBeNull();
+  });
+
+  it('expande 5 dígitos a 8 (Venndelo rellena a la izquierda: 05001 → 00005001 → 404)', () => {
+    expect(normalizarCodigoDane('11001')).toBe('11001000');
+    expect(normalizarCodigoDane('05001')).toBe('05001000');
+  });
+
+  it('acepta 8 dígitos tal cual', () => {
+    expect(normalizarCodigoDane('11001000')).toBe('11001000');
+    expect(normalizarCodigoDane('05001000')).toBe('05001000');
+  });
+
+  it('recorta espacios alrededor', () => {
+    expect(normalizarCodigoDane('  11001 ')).toBe('11001000');
+  });
+
+  it('antepone el 0 perdido en códigos de 4 o 7 dígitos', () => {
+    expect(normalizarCodigoDane('5001')).toBe('05001000');
+    expect(normalizarCodigoDane('5001000')).toBe('05001000');
+  });
+
+  it('quita separadores (espacios, puntos, guiones)', () => {
+    expect(normalizarCodigoDane('11.001')).toBe('11001000');
+    expect(normalizarCodigoDane('11-001-000')).toBe('11001000');
+    expect(normalizarCodigoDane('11 001')).toBe('11001000');
+  });
+
+  it('rechaza letras', () => {
+    expect(normalizarCodigoDane('Bogotá')).toBeNull();
+    expect(normalizarCodigoDane('11O01')).toBeNull();
+  });
+
+  it('rechaza longitudes inválidas', () => {
+    expect(normalizarCodigoDane('1')).toBeNull();
+    expect(normalizarCodigoDane('110')).toBeNull();
+    expect(normalizarCodigoDane('110010')).toBeNull();
+    expect(normalizarCodigoDane('110010000')).toBeNull();
+  });
+});
+
+describe('subdivisionDeDane', () => {
+  it('toma los 2 primeros dígitos', () => {
+    expect(subdivisionDeDane('11001')).toBe('11');
+    expect(subdivisionDeDane('05001000')).toBe('05');
+  });
+});
+
+describe('resolverCiudadOrigen', () => {
+  it('retorna city_code normalizado y su subdivisión', () => {
+    expect(resolverCiudadOrigen('05001')).toEqual({ city_code: '05001000', subdivision_code: '05' });
+    expect(resolverCiudadOrigen('11001000')).toEqual({ city_code: '11001000', subdivision_code: '11' });
+  });
+
+  it('lanza error claro si no hay origen válido (sin fallback a Bogotá)', () => {
+    expect(() => resolverCiudadOrigen(undefined)).toThrow(ERROR_CIUDAD_ORIGEN);
+    expect(() => resolverCiudadOrigen('')).toThrow(ERROR_CIUDAD_ORIGEN);
+    expect(() => resolverCiudadOrigen('abc')).toThrow(ERROR_CIUDAD_ORIGEN);
+  });
+});
+
+describe('tipoLineaVenndelo', () => {
+  it('usa STANDARD con variation_id numérico cuando el producto está sincronizado', () => {
+    expect(tipoLineaVenndelo('1336045')).toEqual({ type: 'STANDARD', variation_id: 1336045 });
+    expect(tipoLineaVenndelo(42)).toEqual({ type: 'STANDARD', variation_id: 42 });
+  });
+
+  it('usa VIRTUAL si no hay variation_id válido (Venndelo exige variation_id en STANDARD)', () => {
+    expect(tipoLineaVenndelo(undefined)).toEqual({ type: 'VIRTUAL' });
+    expect(tipoLineaVenndelo(null)).toEqual({ type: 'VIRTUAL' });
+    expect(tipoLineaVenndelo('')).toEqual({ type: 'VIRTUAL' });
+    expect(tipoLineaVenndelo('abc')).toEqual({ type: 'VIRTUAL' });
+    expect(tipoLineaVenndelo('0')).toEqual({ type: 'VIRTUAL' });
+  });
+});
+
+describe('validarOrigenEnCiudades', () => {
+  const ciudades: CiudadVenndelo[] = [
+    { code: '05001000', name: 'Medellin', department: 'Antioquia', subdivision_code: '05', subdivision_name: 'Antioquia', service_status: 'ACTIVE' },
+    { code: '11001000', name: 'Bogota', department: 'Cundinamarca', subdivision_code: '25', subdivision_name: 'Cundinamarca', service_status: 'ACTIVE' },
+    { code: '27001000', name: 'Quibdo', department: 'Chocó', subdivision_code: '27', service_status: 'SUSPENDED', service_unavailable_message: 'Destino suspendido temporalmente' },
+    { code: '25653001', name: 'Camancha', department: 'Cundinamarca', subdivision_code: '25', service_status: 'ACTIVE' },
+  ];
+
+  it('acepta un código existente y activo, con los datos de Venndelo', () => {
+    const r = validarOrigenEnCiudades('11001000', ciudades);
+    expect(r.estado).toBe('ok');
+    // Venndelo trata a Bogotá como departamento 25, no 11: se usa el de la lista
+    if (r.estado === 'ok') expect(r.ciudad.subdivision_code).toBe('25');
+  });
+
+  it('marca como no_existe un código con formato válido que Venndelo no tiene', () => {
+    expect(validarOrigenEnCiudades('05003000', ciudades).estado).toBe('no_existe');
+    // Municipio sin cabecera "000" en Venndelo (San Cayetano solo tiene corregimientos)
+    expect(validarOrigenEnCiudades('25653000', ciudades).estado).toBe('no_existe');
+  });
+
+  it('marca como suspendida una ciudad no activa, con el mensaje de Venndelo', () => {
+    const r = validarOrigenEnCiudades('27001000', ciudades);
+    expect(r.estado).toBe('suspendida');
+    if (r.estado === 'suspendida') expect(r.mensaje).toContain('Destino suspendido temporalmente');
+  });
+
+  it('los mensajes de error mencionan "ciudad origen" para que la UI los reconozca', () => {
+    const r = validarOrigenEnCiudades('05003000', ciudades);
+    if (r.estado !== 'ok') expect(r.mensaje.toLowerCase()).toContain('ciudad origen');
+  });
+});
+
+describe('descuentosVenndelo (anticipo de envío)', () => {
+  it('sin anticipo no envía descuentos', () => {
+    expect(descuentosVenndelo(0)).toEqual([]);
+    expect(descuentosVenndelo(undefined)).toEqual([]);
+    expect(descuentosVenndelo(null)).toEqual([]);
+    expect(descuentosVenndelo(-500)).toEqual([]);
+  });
+
+  it('envía el anticipo como un único descuento GLOBAL en pesos enteros', () => {
+    expect(descuentosVenndelo(17476)).toEqual([{ type: 'GLOBAL', amount: 17476 }]);
+    expect(descuentosVenndelo(17060.07)).toEqual([{ type: 'GLOBAL', amount: 17060 }]);
+  });
+});
+
+describe('saldoContraEntrega', () => {
+  it('sin anticipo, se cobra el total', () => {
+    expect(saldoContraEntrega(36160, 0)).toBe(36160);
+    expect(saldoContraEntrega(36160, undefined)).toBe(36160);
+  });
+
+  it('la tienda recibe exactamente el valor del producto aunque el envío real cambie', () => {
+    const producto = 20000;
+    const anticipo = 17476; // lo que el cliente pagó según la cotización
+    for (const envioReal of [17476, 16576, 16160.07, 18000]) {
+      const total = producto + envioReal;
+      const cobroEnPuerta = saldoContraEntrega(total, anticipo);
+      const reintegro = cobroEnPuerta - envioReal; // Venndelo: reintegro = cobrado − envío
+      expect(anticipo + reintegro).toBeCloseTo(producto, 6);
+      // El cliente paga en total producto + envío real
+      expect(anticipo + cobroEnPuerta).toBeCloseTo(producto + envioReal, 6);
+    }
+  });
+
+  it('nunca es negativo', () => {
+    expect(saldoContraEntrega(10000, 15000)).toBe(0);
   });
 });

@@ -7,6 +7,7 @@ import { Input } from '../components/ui/Input';
 import { ChangelogModal } from '../components/ChangelogModal';
 import { Save, Download, Upload, CheckCircle, RefreshCw, ExternalLink, Clock, AlertCircle, Zap, Sparkles, Trash2, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizarCodigoDane, fetchCiudadesVenndelo, validarOrigenEnCiudades } from '../lib/venndelo';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
@@ -120,8 +121,33 @@ export function ConfiguracionPage() {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const ciudadOrigenTexto = config.ciudad_origen?.trim() || '';
+    const ciudadOrigen = ciudadOrigenTexto ? normalizarCodigoDane(ciudadOrigenTexto) : '';
+    if (ciudadOrigen === null) {
+      toast.error('Ciudad origen inválida: ingresa un código DANE de 5 u 8 dígitos (ej. 11001 para Bogotá).');
+      return;
+    }
+    // Un código con formato válido puede no existir en Venndelo (typo) o estar suspendido:
+    // se verifica contra la lista real para no descubrirlo recién al crear un pedido.
+    if (ciudadOrigen && config.api_key_venndelo) {
+      try {
+        const ciudades = await fetchCiudadesVenndelo(config.api_key_venndelo);
+        const validacion = validarOrigenEnCiudades(ciudadOrigen, ciudades);
+        if (validacion.estado === 'no_existe') {
+          toast.error(validacion.mensaje);
+          return;
+        }
+        if (validacion.estado === 'suspendida') {
+          toast.warning(`${validacion.mensaje} Se guardó igual, pero los envíos fallarán mientras siga suspendida.`);
+        } else {
+          toast.info(`Ciudad origen: ${validacion.ciudad.name}, ${validacion.ciudad.subdivision_name || ''} (${ciudadOrigen})`);
+        }
+      } catch {
+        toast.warning('No se pudo verificar la ciudad origen con Venndelo (sin conexión o API key inválida). Se guardó sin verificar.');
+      }
+    }
     updateConfiguracion({
       prefijo: config.prefijo,
       empresa_nome: config.empresa_nome,
@@ -132,7 +158,7 @@ export function ConfiguracionPage() {
       meta_mensual: config.meta_mensual,
       dias_laborables: config.dias_laborables,
       api_key_venndelo: config.api_key_venndelo,
-      ciudad_origen: config.ciudad_origen,
+      ciudad_origen: ciudadOrigen,
       peso_default_kg: config.peso_default_kg
     });
     setConfig(getConfiguracion());
@@ -357,7 +383,7 @@ export function ConfiguracionPage() {
                     label="Ciudad Origen (código DANE)"
                     value={config.ciudad_origen || ''}
                     onChange={e => setConfig({...config, ciudad_origen: e.target.value})}
-                    placeholder="11001"
+                    placeholder="Ej: 11001 (Bogotá)"
                   />
                   <Input
                     label="Peso Default (kg)"

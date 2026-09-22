@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { getAllFacturas, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
-import { getProdutos, getCombos, getClientes, updateFacturaVenndelo } from '../lib/database';
+import { getAllFacturas, getFacturaById, createFactura, getSiguienteNumero, anularFactura, getConfiguracion } from '../lib/facturas';
+import { getProdutos, getCombos, getClientes, updateFacturaVenndelo, desvincularPedidoVenndelo } from '../lib/database';
 import { gerarPDFFactura, gerarPDFGuia } from '../lib/pdf';
-import { getCiudades, createOrder, createShipment, generateLabel, getOrder, cancelOrder, distribuirDescuento, type CreateOrderResult } from '../lib/venndelo';
+import { getCiudades, createOrder, createShipment, generateLabel, getOrder, cancelOrder, distribuirDescuento, saldoContraEntrega, type CreateOrderResult, type OrderItemInput } from '../lib/venndelo';
 import { cotizarEnvioSimple, type ItemEnvio } from '../lib/envio';
 import type { CiudadVenndelo } from '../lib/venndelo';
 import { exportToExcel, exportToCSV } from '../lib/export';
@@ -62,6 +62,36 @@ interface Factura {
 function interpretarErrorVenndelo(errMsg: string): { causa: string; solucion: string } {
   const msg = errMsg.toLowerCase();
 
+  if (msg.includes('ciudad origen') && msg.includes('suspendida')) {
+    return {
+      causa: 'Venndelo suspendió temporalmente los envíos desde tu ciudad origen.',
+      solucion: 'Espera a que Venndelo reactive la ciudad o crea el pedido manualmente desde su panel. Cuando se resuelva, usa "Crear pedido" en el historial.'
+    };
+  }
+  if (msg.includes('ciudad origen')) {
+    return {
+      causa: 'No hay una ciudad origen configurada, o su código DANE no es válido. Venndelo necesita saber desde qué ciudad se despacha.',
+      solucion: 'Ve a Configuración → Integración Venndelo e ingresa el código DANE de la ciudad origen (5 u 8 dígitos, ej. 11001 para Bogotá). Luego usa "Crear pedido" en el historial.'
+    };
+  }
+  if (msg.includes('ciudad de destino') && (msg.includes('inactiva') || msg.includes('suspendid') || msg.includes('fuera de servicio'))) {
+    return {
+      causa: 'Venndelo suspendió temporalmente los envíos hacia la ciudad de destino.',
+      solucion: 'Consulta con el cliente otra dirección de entrega o espera a que Venndelo reactive la ciudad; luego usa "Crear pedido" en el historial.'
+    };
+  }
+  if (msg.includes('no se pudo encontrar una ciudad') || msg.includes('ciudad de recogida no encontrada')) {
+    return {
+      causa: 'Venndelo no reconoce el código DANE de la ciudad de origen o de destino.',
+      solucion: 'Revisa la ciudad origen en Configuración → Integración Venndelo y la ciudad de destino de la factura. Luego usa "Crear pedido" en el historial.'
+    };
+  }
+  if (msg.includes('variation_id')) {
+    return {
+      causa: 'Un producto del catálogo de Venndelo se envió sin su variante.',
+      solucion: 'Sincroniza los productos con Venndelo (Inventario) y vuelve a intentarlo con "Crear pedido".'
+    };
+  }
   if (msg.includes('tarifa de transporte no localizada') || (msg.includes('422') && msg.includes('transport'))) {
     return {
       causa: 'El transportador no tiene cobertura en la ciudad de destino, o el método "Contra Entrega" no está disponible para esa ruta.',
@@ -116,6 +146,7 @@ interface ItemFactura {
   produto_id?: string;
   combo_id?: string;
   venndelo_id?: string;
+  venndelo_variation_id?: string;
   descripcion: string;
   quantidade: number;
   precio: number;
@@ -151,6 +182,7 @@ export function Facturas() {
   });
   const [notas, setNotas] = useState('');
   const [descuento, setDescuento] = useState(0);
+  const [anticipoEnvio, setAnticipoEnvio] = useState(0);
   const [items, setItems] = useState<ItemFactura[]>([
     { tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }
   ]);
@@ -289,6 +321,8 @@ export function Facturas() {
     newItems[index].origen = tipo === 'inventario' ? (origen || 'produto') : 'produto';
     newItems[index].produto_id = undefined;
     newItems[index].combo_id = undefined;
+    newItems[index].venndelo_id = undefined;
+    newItems[index].venndelo_variation_id = undefined;
     newItems[index].descripcion = '';
     newItems[index].precio = 0;
 
@@ -304,6 +338,7 @@ export function Facturas() {
         newItems[index].descripcion = prod?.nome || '';
         newItems[index].precio = prod?.preco || 0;
         newItems[index].venndelo_id = prod?.venndelo_id;
+        newItems[index].venndelo_variation_id = prod?.venndelo_variation_id;
         newItems[index].peso_kg = prod?.peso_kg;
         newItems[index].alto_cm = prod?.alto_cm;
         newItems[index].ancho_cm = prod?.ancho_cm;
@@ -325,6 +360,7 @@ export function Facturas() {
       alto_cm: i.alto_cm,
       ancho_cm: i.ancho_cm,
       largo_cm: i.largo_cm,
+      venndelo_variation_id: i.venndelo_variation_id,
     }));
     return distribuirDescuento(orderItems, descuento || 0).itemsAjustados as ItemEnvio[];
   }
@@ -376,11 +412,17 @@ export function Facturas() {
       return;
     }
 
+    if (aplicaAnticipo && anticipoEnvio > subtotal - descuento) {
+      toast.error('El anticipo no puede superar el valor de los productos. Si el cliente pagó todo por adelantado, usa el método "Ya Pagado".');
+      return;
+    }
+
     const itemsParaGuardar = validItems.map(item => ({
       tipo_item: item.tipo_item === 'inventario' ? item.origen : 'manual',
       produto_id: item.produto_id,
       combo_id: item.combo_id,
       venndelo_id: item.venndelo_id,
+      venndelo_variation_id: item.venndelo_variation_id,
       descripcion: item.descripcion,
       quantidade: item.quantidade,
       precio: item.precio,
@@ -408,8 +450,12 @@ export function Facturas() {
             );
             setCostoEnvio(costoEnvioFinal);
             setEnvioCalculado(true);
-          } catch {
-            // Fallo silencioso: se crea la factura con costo_envio 0
+          } catch (e: any) {
+            // No se crea la factura: con la cotización fallida quedaría con envío $0 y,
+            // si el pedido también falla, con un total inconsistente sin que nadie lo note.
+            const errMsg = e?.message || 'Error desconocido';
+            toast.error(`No se creó la factura: no se pudo cotizar el envío. ${errMsg}`, { duration: 10000 });
+            return;
           }
         }
       }
@@ -425,6 +471,7 @@ export function Facturas() {
         notas,
         descuento,
         costo_envio: tipoPedido === 'nacional' ? costoEnvioFinal : 0,
+        anticipo_envio: aplicaAnticipo ? anticipoEnvio : 0,
         tipo_pedido: tipoPedido,
         payment_method_code: paymentMethod,
         ciudad_destino: tipoPedido === 'nacional' ? ciudadDestino : '',
@@ -432,183 +479,7 @@ export function Facturas() {
       });
 
       if (tipoPedido === 'nacional') {
-        setCreatingVenndelo(true);
-        const config = getConfiguracion();
-
-          if (!config.api_key_venndelo) {
-            toast.warning('API Key de Venndelo no configurada. La factura se creó pero no se registró el envío.');
-            setCreatingVenndelo(false);
-          } else if (!f.cliente_celular || !f.cliente_direccion) {
-            const missing: string[] = [];
-            if (!f.cliente_celular) missing.push('• Teléfono del cliente');
-            if (!f.cliente_direccion) missing.push('• Dirección del cliente');
-            toast.custom((t) => (
-              <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
-                    <span className="text-xl">⚠️</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white">Datos del cliente incompletos</p>
-                    <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
-                      Para crear el pedido en Venndelo, el cliente debe tener:
-                    </p>
-                    <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
-                      {missing.join('\n')}
-                    </div>
-                    <p className="text-[11px] text-white/40 mt-2">
-                      La factura se guardó localmente. Completa los datos del cliente y vuelve a intentarlo.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ), { duration: 10000 });
-            setCreatingVenndelo(false);
-          } else if (!config.empresa_telefono || !config.empresa_direccion) {
-            const missing: string[] = [];
-            if (!config.empresa_telefono) missing.push('• Teléfono de la empresa');
-            if (!config.empresa_direccion) missing.push('• Dirección de la empresa');
-            toast.custom((t) => (
-              <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
-                    <span className="text-xl">⚙️</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white">Configuración incompleta</p>
-                    <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
-                      Para crear pedidos en Venndelo, necesitas configurar:
-                    </p>
-                    <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
-                      {missing.join('\n')}
-                    </div>
-                    <p className="text-[11px] text-white/40 mt-2">
-                      Ve a Configuración → Datos de la Empresa y completa la información.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ), { duration: 10000 });
-            setCreatingVenndelo(false);
-          } else {
-            let order: CreateOrderResult | null = null;
-            let venndeloError = false;
-            try {
-              order = await createOrder(f, itemsParaGuardar, config.api_key_venndelo, {
-                ciudad_origen: config.ciudad_origen || '',
-                empresa_nome: config.empresa_nome || '',
-                empresa_telefono: config.empresa_telefono || '',
-                empresa_direccion: config.empresa_direccion || ''
-              });
-              if (!order) {
-                // createOrder returned null without throwing (shouldn't happen now, but just in case)
-                venndeloError = true;
-                toast.warning('Factura creada. No se pudo crear el pedido en Venndelo, puedes crearlo manualmente desde el panel.');
-                setCreatingVenndelo(false);
-              }
-            } catch (e: any) {
-              venndeloError = true;
-              const errMsg = e?.message || 'Error desconocido';
-              console.error('[Facturas] createOrder error:', errMsg);
-              const { causa, solucion } = interpretarErrorVenndelo(errMsg);
-              toast.custom((t) => (
-                <div className="bg-surface border border-red-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                      <span className="text-xl">⚠️</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white">Pedido no creado en Venndelo</p>
-                      <p className="text-xs text-red-400 font-semibold mt-2">¿Por qué ocurrió?</p>
-                      <p className="text-xs text-white/70 mt-1 leading-relaxed">{causa}</p>
-                      <p className="text-xs text-yellow-400 font-semibold mt-2">¿Qué hacer?</p>
-                      <p className="text-xs text-white/70 mt-1 leading-relaxed">{solucion}</p>
-                      <p className="text-[10px] text-white/30 mt-3 font-mono border-t border-white/10 pt-2">{errMsg}</p>
-                    </div>
-                  </div>
-                </div>
-              ), { duration: 15000 });
-              setCreatingVenndelo(false);
-            }
-
-            if (venndeloError) {
-              // Ya se manejó arriba, no hacer nada más aquí
-            } else if (order) {
-              let tracking = '';
-              let labelUrl = '';
-              let shipmentCreated = false;
-
-              // Verificar si Venndelo ya creó el envío automáticamente
-              const orderShipments = order.shipments;
-              const hasExistingShipments = Array.isArray(orderShipments) && orderShipments.length > 0;
-
-              if (!hasExistingShipments) {
-                // No hay envío aún → intentar crearlo
-                try {
-                  await createShipment(order.id, config.api_key_venndelo);
-                  shipmentCreated = true;
-                } catch (_e) {
-                  // Silencioso — se puede generar desde el modal/historial
-                }
-              } else {
-                // Ya tiene envío → extraer tracking si existe
-                shipmentCreated = true;
-                const existingTracking = orderShipments[0]?.tracking_number;
-                if (existingTracking) tracking = existingTracking;
-              }
-
-              // Intentar generar guía si hay envío
-              let localPath: string | null = null;
-              if (shipmentCreated) {
-                try {
-                  const label = await generateLabel(order.id, config.api_key_venndelo);
-                  labelUrl = label.labelUrl;
-                  if (label.tracking) tracking = label.tracking;
-                  // Descargar localmente
-                  const filename = `guia_${f.numero}.pdf`;
-                  localPath = await downloadGuideLocally(labelUrl, filename);
-                } catch (_e) {
-                  // Silencioso — el usuario puede generar la guía desde el botón Guía
-                }
-              }
-
-              // Reconciliar el flete con el valor real que cobrará Venndelo: la cotización
-              // previa (factura.costo_envio) puede diferir unos pesos del flete de creación.
-              // Se adopta el de Venndelo para que el total de la factura coincida con el COD.
-              const reconcilia = typeof order.shippingTotal === 'number' && Number.isFinite(order.shippingTotal) && order.shippingTotal >= 0;
-              const costoEnvioReal = reconcilia ? order.shippingTotal! : (f.costo_envio ?? 0);
-              const totalReal = reconcilia ? (f.subtotal - (f.descuento || 0) + costoEnvioReal) : (f.total ?? 0);
-
-              updateFacturaVenndelo(f.id, {
-                venndeloOrderId: order.id,
-                tracking,
-                labelUrl,
-                pin: order.pin,
-                status: order.status,
-                shipmentCreated,
-                venndeloLabelLocalPath: localPath || undefined,
-                ...(reconcilia ? { costoEnvio: costoEnvioReal, total: totalReal } : {})
-              });
-
-            setVenndeloResult({
-              factura: {
-                ...f,
-                costo_envio: costoEnvioReal,
-                total: totalReal,
-                venndelo_order_id: order.id,
-                venndelo_tracking: tracking,
-                venndelo_label_url: labelUrl,
-                venndelo_label_local_path: localPath,
-                venndelo_pin: order.pin,
-                venndelo_status: order.status
-              },
-              labelUrl,
-              tracking
-            });
-            setShowVenndeloSuccess(true);
-            setCreatingVenndelo(false);
-          }
-        }
+        await registrarPedidoVenndelo(f, itemsParaGuardar);
       }
 
       toast.success('Factura creada: ' + f.numero);
@@ -620,10 +491,243 @@ export function Facturas() {
     }
   }
 
+  /**
+   * Crea el pedido en Venndelo para una factura nacional ya guardada, genera envío y guía
+   * y reconcilia el flete. Maneja y muestra sus propios errores (no lanza). Se usa al
+   * emitir la factura y para reintentar desde el historial si el pedido no se creó.
+   */
+  async function registrarPedidoVenndelo(f: any, itemsOrden: OrderItemInput[]): Promise<void> {
+    setCreatingVenndelo(true);
+    const config = getConfiguracion();
+
+    if (!config.api_key_venndelo) {
+      toast.warning('API Key de Venndelo no configurada. La factura se creó pero no se registró el envío.');
+      setCreatingVenndelo(false);
+    } else if (!f.cliente_celular || !f.cliente_direccion) {
+      const missing: string[] = [];
+      if (!f.cliente_celular) missing.push('• Teléfono del cliente');
+      if (!f.cliente_direccion) missing.push('• Dirección del cliente');
+      toast.custom((t) => (
+        <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
+              <span className="text-xl">⚠️</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white">Datos del cliente incompletos</p>
+              <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
+                Para crear el pedido en Venndelo, el cliente debe tener:
+              </p>
+              <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
+                {missing.join('\n')}
+              </div>
+              <p className="text-[11px] text-white/40 mt-2">
+                La factura se guardó localmente. Completa los datos del cliente y vuelve a intentarlo.
+              </p>
+            </div>
+          </div>
+        </div>
+      ), { duration: 10000 });
+      setCreatingVenndelo(false);
+    } else if (!config.empresa_telefono || !config.empresa_direccion) {
+      const missing: string[] = [];
+      if (!config.empresa_telefono) missing.push('• Teléfono de la empresa');
+      if (!config.empresa_direccion) missing.push('• Dirección de la empresa');
+      toast.custom((t) => (
+        <div className="bg-surface border border-yellow-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
+              <span className="text-xl">⚙️</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white">Configuración incompleta</p>
+              <p className="text-xs text-yellow-400/80 mt-1.5 leading-relaxed">
+                Para crear pedidos en Venndelo, necesitas configurar:
+              </p>
+              <div className="text-xs text-white/70 mt-2 font-mono leading-relaxed">
+                {missing.join('\n')}
+              </div>
+              <p className="text-[11px] text-white/40 mt-2">
+                Ve a Configuración → Datos de la Empresa y completa la información.
+              </p>
+            </div>
+          </div>
+        </div>
+      ), { duration: 10000 });
+      setCreatingVenndelo(false);
+    } else {
+      let order: CreateOrderResult | null = null;
+      let venndeloError = false;
+      try {
+        order = await createOrder(f, itemsOrden, config.api_key_venndelo, {
+          ciudad_origen: config.ciudad_origen || '',
+          empresa_nome: config.empresa_nome || '',
+          empresa_telefono: config.empresa_telefono || '',
+          empresa_direccion: config.empresa_direccion || ''
+        }, f.anticipo_envio || 0);
+        if (order?.anticipoAplicado === false) {
+          toast.error(
+            `Venndelo NO aplicó el anticipo de envío de ${formatCurrency(f.anticipo_envio || 0)} al pedido ${order.pin || order.id}: cobraría de más en la puerta. Revísalo en Venndelo y, si es así, cancélalo (anulando la factura).`,
+            { duration: 20000 }
+          );
+        }
+        if (!order) {
+          // createOrder returned null without throwing (shouldn't happen now, but just in case)
+          venndeloError = true;
+          toast.warning('Factura creada. No se pudo crear el pedido en Venndelo, puedes crearlo manualmente desde el panel.');
+          setCreatingVenndelo(false);
+        }
+      } catch (e: any) {
+        venndeloError = true;
+        const errMsg = e?.message || 'Error desconocido';
+        console.error('[Facturas] createOrder error:', errMsg);
+        const { causa, solucion } = interpretarErrorVenndelo(errMsg);
+        toast.custom((t) => (
+          <div className="bg-surface border border-red-500/20 rounded-2xl p-5 shadow-2xl max-w-md w-full" onClick={() => toast.dismiss(t)}>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <span className="text-xl">⚠️</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">Pedido no creado en Venndelo</p>
+                <p className="text-xs text-red-400 font-semibold mt-2">¿Por qué ocurrió?</p>
+                <p className="text-xs text-white/70 mt-1 leading-relaxed">{causa}</p>
+                <p className="text-xs text-yellow-400 font-semibold mt-2">¿Qué hacer?</p>
+                <p className="text-xs text-white/70 mt-1 leading-relaxed">{solucion}</p>
+                <p className="text-[10px] text-white/30 mt-3 font-mono border-t border-white/10 pt-2">{errMsg}</p>
+              </div>
+            </div>
+          </div>
+        ), { duration: 15000 });
+        setCreatingVenndelo(false);
+      }
+
+      if (venndeloError) {
+        // Ya se manejó arriba, no hacer nada más aquí
+      } else if (order) {
+        let tracking = '';
+        let labelUrl = '';
+        let shipmentCreated = false;
+
+        // Verificar si Venndelo ya creó el envío automáticamente
+        const orderShipments = order.shipments;
+        const hasExistingShipments = Array.isArray(orderShipments) && orderShipments.length > 0;
+
+        if (!hasExistingShipments) {
+          // No hay envío aún → intentar crearlo
+          try {
+            await createShipment(order.id, config.api_key_venndelo);
+            shipmentCreated = true;
+          } catch (_e) {
+            // Silencioso — se puede generar desde el modal/historial
+          }
+        } else {
+          // Ya tiene envío → extraer tracking si existe
+          shipmentCreated = true;
+          const existingTracking = orderShipments[0]?.tracking_number;
+          if (existingTracking) tracking = existingTracking;
+        }
+
+        // Intentar generar guía si hay envío
+        let localPath: string | null = null;
+        if (shipmentCreated) {
+          try {
+            const label = await generateLabel(order.id, config.api_key_venndelo);
+            labelUrl = label.labelUrl;
+            if (label.tracking) tracking = label.tracking;
+            // Descargar localmente
+            const filename = `guia_${f.numero}.pdf`;
+            localPath = await downloadGuideLocally(labelUrl, filename);
+          } catch (_e) {
+            // Silencioso — el usuario puede generar la guía desde el botón Guía
+          }
+        }
+
+        // Reconciliar el flete con el valor real que cobrará Venndelo: la cotización
+        // previa (factura.costo_envio) puede diferir unos pesos del flete de creación.
+        // Se adopta el de Venndelo para que el total de la factura coincida con el COD.
+        const reconcilia = typeof order.shippingTotal === 'number' && Number.isFinite(order.shippingTotal) && order.shippingTotal >= 0;
+        const costoEnvioReal = reconcilia ? order.shippingTotal! : (f.costo_envio ?? 0);
+        const totalReal = reconcilia ? (f.subtotal - (f.descuento || 0) + costoEnvioReal) : (f.total ?? 0);
+
+        updateFacturaVenndelo(f.id, {
+          venndeloOrderId: order.id,
+          tracking,
+          labelUrl,
+          pin: order.pin,
+          status: order.status,
+          shipmentCreated,
+          venndeloLabelLocalPath: localPath || undefined,
+          ...(reconcilia ? { costoEnvio: costoEnvioReal, total: totalReal } : {})
+        });
+
+      setVenndeloResult({
+        factura: {
+          ...f,
+          costo_envio: costoEnvioReal,
+          total: totalReal,
+          venndelo_order_id: order.id,
+          venndelo_tracking: tracking,
+          venndelo_label_url: labelUrl,
+          venndelo_label_local_path: localPath,
+          venndelo_pin: order.pin,
+          venndelo_status: order.status
+        },
+        labelUrl,
+        tracking
+      });
+      setShowVenndeloSuccess(true);
+      setCreatingVenndelo(false);
+    }
+    }
+  }
+
+  /**
+   * Reintenta crear el pedido Venndelo de una factura nacional activa que quedó sin
+   * pedido (p. ej. Venndelo lo rechazó al emitirla). No se busca un pedido previo por
+   * número de factura: Venndelo no guarda external_order_id y el filtro ?external_id=
+   * no filtra (devuelve el pedido más reciente). La app guarda el ID cuando el pedido
+   * se crea bien, así que un reintento solo ocurre si el anterior falló.
+   */
+  async function handleCrearPedidoPendiente(factura: any) {
+    const config = getConfiguracion();
+    if (!config.api_key_venndelo) {
+      toast.error('API Key de Venndelo no configurada');
+      return;
+    }
+    const f = getFacturaById(factura.id);
+    if (!f || f.estado !== 'activa' || f.venndelo_order_id) {
+      loadData();
+      return;
+    }
+
+    // Los ítems guardados no llevan peso/dimensiones ni IDs de Venndelo: se completan
+    // desde el producto actual del inventario (combos y manuales van sin catálogo).
+    const productosActuales = getProdutos();
+    const itemsOrden: OrderItemInput[] = f.items.map((item: any) => {
+      const prod = item.produto_id ? productosActuales.find((p: any) => p.id === item.produto_id) : undefined;
+      return {
+        descripcion: item.descripcion,
+        quantidade: item.quantidade,
+        precio: item.precio,
+        venndelo_id: prod?.venndelo_id,
+        venndelo_variation_id: prod?.venndelo_variation_id,
+        peso_kg: prod?.peso_kg,
+        alto_cm: prod?.alto_cm,
+        ancho_cm: prod?.ancho_cm,
+        largo_cm: prod?.largo_cm,
+      };
+    });
+
+    await registrarPedidoVenndelo(f, itemsOrden);
+    loadData();
+  }
+
   function resetForm() {
     setFormData({ cliente_id: '', cliente_nome: '', cliente_celular: '', cliente_nit: '', cliente_direccion: '' });
     setNotas('');
     setDescuento(0);
+    setAnticipoEnvio(0);
     setItems([{ tipo_item: 'inventario', origen: 'produto', descripcion: '', quantidade: 1, precio: 0 }]);
     setTipoPedido('local');
     setBarrioMedellin('');
@@ -782,8 +886,10 @@ export function Facturas() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.items?.length > 0) {
-            const found = data.items[0];
+          // Venndelo ignora el filtro external_id y devuelve el pedido más reciente:
+          // solo se vincula si de verdad corresponde a esta factura.
+          const found = (data.items || []).find((o: any) => o.external_order_id === factura.numero);
+          if (found) {
             // Guardar el ID encontrado
             updateFacturaVenndelo(factura.id, {
               venndeloOrderId: found.id,
@@ -857,6 +963,10 @@ export function Facturas() {
   const subtotal = items.reduce((sum, item) => sum + (item.quantidade * item.precio), 0);
   const iva = 0;
   const total = subtotal - descuento + costoEnvio;
+  // El anticipo de envío solo existe en contra entrega nacional: es lo que el cliente ya
+  // pagó y se descuenta de lo que cobra el transportador, sin tocar el precio del producto.
+  const aplicaAnticipo = tipoPedido === 'nacional' && paymentMethod === 'COD';
+  const saldoACobrar = saldoContraEntrega(total, aplicaAnticipo ? anticipoEnvio : 0);
 
   const columns: DataTableColumn<Factura>[] = useMemo(() => [
     { key: 'numero', header: 'Número', sortable: true, searchable: true },
@@ -914,6 +1024,11 @@ export function Facturas() {
               <Truck className="w-4 h-4 mr-1" /> Guía
             </Button>
           )}
+          {item.tipo_pedido === 'nacional' && item.estado === 'activa' && !item.venndelo_order_id && (
+            <Button variant="secondary" size="sm" onClick={() => handleCrearPedidoPendiente(item)} disabled={creatingVenndelo} title="El pedido no se creó en Venndelo: reintentar">
+              <RefreshCw className={`w-4 h-4 mr-1 ${creatingVenndelo ? 'animate-spin' : ''}`} /> Crear pedido
+            </Button>
+          )}
           {item.tipo_pedido === 'nacional' && (
             <Button variant="secondary" size="sm" onClick={() => handleViewVenndeloOrder(item)} title="Ver detalles del pedido Venndelo">
               <Eye className="w-4 h-4 mr-1" /> Orden
@@ -927,7 +1042,7 @@ export function Facturas() {
         </div>
       )
     }
-  ], [handleViewPDF, handleViewGuia, handleViewVenndeloOrder]);
+  ], [handleViewPDF, handleViewGuia, handleViewVenndeloOrder, handleCrearPedidoPendiente, creatingVenndelo]);
 
   return (
     <div className="space-y-6">
@@ -1316,10 +1431,49 @@ export function Facturas() {
                   />
                 </div>
               </div>
+              {aplicaAnticipo && (
+                <div className="flex flex-col gap-1 pb-2 border-b border-white/5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Anticipo de envío</label>
+                    {costoEnvio > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAnticipoEnvio(Math.round(costoEnvio))}
+                        className="text-[10px] font-bold text-primary hover:underline"
+                        title="El cliente pagó exactamente el envío cotizado"
+                      >
+                        = envío cotizado
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-xs">$</span>
+                    <input
+                      type="number"
+                      value={anticipoEnvio}
+                      onChange={e => setAnticipoEnvio(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-full pl-6 pr-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-primary/50 outline-none transition-colors"
+                    />
+                  </div>
+                  <span className="text-[10px] text-white/30">Ya pagado por el cliente. No cambia el precio del producto.</span>
+                </div>
+              )}
               <div className="flex justify-between text-xl font-bold text-white pt-1">
                 <span>Total:</span>
                 <span className="text-primary">{formatCurrency(total)}</span>
               </div>
+              {aplicaAnticipo && anticipoEnvio > 0 && (
+                <>
+                  <div className="flex justify-between text-white/40 text-sm">
+                    <span>Anticipo:</span>
+                    <span>-{formatCurrency(anticipoEnvio)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-white">
+                    <span>A cobrar contra entrega:</span>
+                    <span className="text-primary">{formatCurrency(saldoACobrar)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -1516,6 +1670,21 @@ export function Facturas() {
                   handleRegenerateVenndeloLabel(venndeloOrderInfo.factura);
                 }}>
                   <RefreshCw className="w-4 h-4 mr-2" /> Generar Guía de Envío
+                </Button>
+              )}
+              {venndeloOrderInfo.order?.status === 'CANCELLED' && venndeloOrderInfo.factura?.estado === 'activa' && (
+                <Button
+                  variant="secondary"
+                  disabled={creatingVenndelo}
+                  onClick={async () => {
+                    const facturaId = venndeloOrderInfo.factura.id;
+                    desvincularPedidoVenndelo(facturaId);
+                    setShowVenndeloOrder(false);
+                    await handleCrearPedidoPendiente({ id: facturaId });
+                  }}
+                  title="El pedido vinculado está cancelado: quitar el vínculo y crear uno nuevo para esta factura"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" /> Desvincular y crear pedido nuevo
                 </Button>
               )}
               <Button

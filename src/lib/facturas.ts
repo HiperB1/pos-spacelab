@@ -31,6 +31,7 @@ export function createFactura(data: {
   notas?: string;
   descuento?: number;
   costo_envio?: number;
+  anticipo_envio?: number;
   tipo_pedido?: 'local' | 'nacional';
   payment_method_code?: 'COD' | 'EXTERNAL_PAYMENT';
   ciudad_destino?: string;
