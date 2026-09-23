@@ -8,6 +8,47 @@ export interface VersionNota {
 
 export const changelog: VersionNota[] = [
   {
+    version: "1.0.6",
+    fecha: "2026-09-22",
+    novedades: [
+      "Anticipo de envío en pedidos contra entrega: lo que el cliente pagó por adelantado se descuenta del cobro en la puerta sin bajar el precio del producto",
+      "Botón \"Crear pedido\" para reintentar en Venndelo las facturas nacionales que quedaron sin pedido",
+      "La factura en PDF muestra el anticipo y el saldo a cobrar contra entrega; la exportación a Excel incluye el anticipo",
+    ],
+    mejoras: [
+      "La ciudad origen se valida contra las ciudades de Venndelo al guardar la configuración",
+      "Mensajes de error más claros cuando Venndelo rechaza un pedido (ciudad suspendida, ciudad no encontrada, producto sin variante)",
+    ],
+    correcciones: [
+      "El código DANE de la ciudad origen ya no genera ceros extra: se envía en el formato de 8 dígitos que exige Venndelo",
+      "Ya no se usa Bogotá como origen cuando la ciudad origen está vacía",
+      "La cotización de envío ya no falla con \"Se requiere variation_id\" para productos sincronizados",
+      "Si falla la cotización automática, la factura no se crea con envío en $0",
+      "Las facturas ya no se vinculan por error al pedido Venndelo de otra factura",
+    ],
+  },
+  {
+    version: "1.0.6",
+    fecha: "2026-09-22",
+    novedades: [
+      "Anticipo de envío en pedidos contra entrega: lo que el cliente pagó por adelantado se descuenta del cobro en la puerta sin bajar el precio del producto",
+      "Botón \"Crear pedido\" para reintentar en Venndelo las facturas nacionales que quedaron sin pedido",
+      "La ciudad origen se verifica con Venndelo al guardar la configuración (código inexistente o ciudad suspendida)",
+    ],
+    mejoras: [
+      "Mensajes de error de Venndelo más claros, con la causa y qué hacer",
+      "El PDF de la factura muestra el anticipo y el saldo contra entrega; el descuento aparece con signo negativo",
+      "La exportación a Excel incluye la columna de anticipo de envío",
+    ],
+    correcciones: [
+      "El código DANE de la ciudad origen ya no llega a Venndelo con ceros adicionales",
+      "Ya no se usa Bogotá como ciudad origen cuando no está configurada",
+      "La cotización de envío ya no falla con \"Se requiere variation_id\" para productos del catálogo",
+      "Si falla la cotización automática, la factura no se crea con envío en $0",
+      "Una factura ya no se vincula por error al pedido Venndelo de otra factura",
+    ],
+  },
+  {
     version: "1.0.5",
     fecha: "2026-06-17",
     correcciones: [
